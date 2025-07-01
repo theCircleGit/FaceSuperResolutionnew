@@ -30,6 +30,10 @@ from io import BytesIO
 # Import system monitoring
 from system_monitor import system_monitor
 
+# --- Import real enhancement logic ---
+from super_resol import enhance_image_api_method
+import tensorflow as tf
+
 app = Flask(__name__)
 CORS(app)
 app.secret_key = os.environ.get('SECRET_KEY', 'dev_secret_key')
@@ -166,44 +170,6 @@ def image_to_base64(image):
     image.save(buffered, format="PNG")
     img_str = base64.b64encode(buffered.getvalue()).decode()
     return f"data:image/png;base64,{img_str}"
-
-def create_mock_enhanced_image(original_image, fidelity_level):
-    """Create a mock enhanced image for demo purposes"""
-    # Resize the original image to simulate enhancement
-    width, height = original_image.size
-    enhanced_size = (width * 2, height * 2)
-    
-    # Create an enhanced version with some visual effects
-    enhanced = original_image.resize(enhanced_size, Image.LANCZOS)
-    
-    # Add a subtle enhancement effect based on fidelity level
-    enhanced_array = np.array(enhanced).astype(np.float32)
-    
-    # Simulate different enhancement levels
-    if fidelity_level == 0.0:
-        # Maximum enhancement - increase contrast and sharpness
-        enhanced_array = enhanced_array * 1.2
-        enhanced_array = np.clip(enhanced_array, 0, 255)
-    elif fidelity_level == 0.2:
-        # High enhancement
-        enhanced_array = enhanced_array * 1.1
-        enhanced_array = np.clip(enhanced_array, 0, 255)
-    elif fidelity_level == 0.5:
-        # Balanced enhancement
-        enhanced_array = enhanced_array * 1.05
-        enhanced_array = np.clip(enhanced_array, 0, 255)
-    elif fidelity_level == 0.7:
-        # Conservative enhancement
-        enhanced_array = enhanced_array * 1.02
-        enhanced_array = np.clip(enhanced_array, 0, 255)
-    else:  # fidelity_level == 1.0
-        # Minimal enhancement
-        enhanced_array = enhanced_array * 1.01
-        enhanced_array = np.clip(enhanced_array, 0, 255)
-    
-    enhanced = Image.fromarray(enhanced_array.astype(np.uint8))
-    # No watermark text drawn
-    return enhanced
 
 @app.route('/')
 def index():
@@ -475,16 +441,16 @@ def enhance_image():
         file_id = log_file_activity(session['user_id'], filename, file_size, 'uploaded')
         
         try:
-            # Load the original image
-            original_image = Image.open(temp_path)
-            
-            # Create all fidelity levels for the frontend to choose from
-            fidelity_levels = [0.0, 0.7, 0.2, 0.5, 1.0]
-            enhanced_images = []
-            
-            for fidelity_level in fidelity_levels:
-                enhanced = create_mock_enhanced_image(original_image, fidelity_level)
-                enhanced_images.append(image_to_base64(enhanced))
+            # --- Use the real enhancement function ---
+            results = enhance_image_api_method(temp_path, model)
+            if results is None:
+                # No face detected or error
+                update_file_enhancement(file_id, None, 'error')
+                os.remove(temp_path)
+                return jsonify({'error': 'No face detected or enhancement failed.'}), 400
+
+            # results is a tuple of 5 PIL Images (one for each fidelity)
+            enhanced_images = [image_to_base64(img) for img in results]
             
             # Update file record with enhancement completion
             enhanced_filename = f"enhanced_{filename}"
@@ -496,7 +462,7 @@ def enhance_image():
             return jsonify({
                 'success': True,
                 'enhanced_images': enhanced_images,
-                'message': 'Image enhanced successfully! (Demo Mode)'
+                'message': 'Image enhanced successfully!'
             })
             
         except Exception as e:
