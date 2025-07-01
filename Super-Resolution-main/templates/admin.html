@@ -1,0 +1,823 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Admin Control Panel</title>
+    <link href="https://cdn.jsdelivr.net/npm/bootstrap@5.1.3/dist/css/bootstrap.min.css" rel="stylesheet">
+    <link href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.0.0/css/all.min.css" rel="stylesheet">
+    <style>
+        .status-badge {
+            font-size: 0.8em;
+        }
+        .user-row:hover {
+            background-color: #f8f9fa;
+        }
+        .action-buttons {
+            white-space: nowrap;
+        }
+    </style>
+</head>
+<body>
+    <div class="container-fluid">
+        <!-- Header -->
+        <header class="bg-primary text-white py-3 mb-4">
+            <div class="container">
+                <div class="row align-items-center">
+                    <div class="col">
+                        <h1 class="h3 mb-0">
+                            <i class="fas fa-cogs"></i> Admin Control Panel
+                        </h1>
+                    </div>
+                    <div class="col-auto">
+                        <a href="{{ url_for('index') }}" class="btn btn-outline-light me-2">
+                            <i class="fas fa-home"></i> Home
+                        </a>
+                        <a href="{{ url_for('logout') }}" class="btn btn-outline-light">
+                            <i class="fas fa-sign-out-alt"></i> Logout
+                        </a>
+                    </div>
+                </div>
+            </div>
+        </header>
+
+        <!-- Main Content -->
+        <div class="container">
+            <!-- Stats Cards -->
+            <div class="row mb-4">
+                <div class="col-md-3">
+                    <div class="card bg-primary text-white">
+                        <div class="card-body">
+                            <h5 class="card-title">Total Users</h5>
+                            <h2 class="card-text">{{ users|length }}</h2>
+                        </div>
+                    </div>
+                </div>
+                <div class="col-md-3">
+                    <div class="card bg-warning text-white">
+                        <div class="card-body">
+                            <h5 class="card-title">Pending Approval</h5>
+                            <h2 class="card-text">{{ users|selectattr('is_approved', 'equalto', 0)|list|length }}</h2>
+                        </div>
+                    </div>
+                </div>
+                <div class="col-md-3">
+                    <div class="card bg-success text-white">
+                        <div class="card-body">
+                            <h5 class="card-title">Approved Users</h5>
+                            <h2 class="card-text">{{ users|selectattr('is_approved', 'equalto', 1)|list|length }}</h2>
+                        </div>
+                    </div>
+                </div>
+                <div class="col-md-3">
+                    <div class="card bg-info text-white">
+                        <div class="card-body">
+                            <h5 class="card-title">Admins</h5>
+                            <h2 class="card-text">{{ users|selectattr('is_admin', 'equalto', 1)|list|length }}</h2>
+                        </div>
+                    </div>
+                </div>
+            </div>
+
+            <!-- Users Table -->
+            <div class="card">
+                <div class="card-header">
+                    <h5 class="mb-0">
+                        <i class="fas fa-users"></i> User Management
+                    </h5>
+                </div>
+                <div class="card-body">
+                    {% if users %}
+                    <div class="table-responsive">
+                        <table class="table table-hover">
+                            <thead class="table-light">
+                                <tr>
+                                    <th>ID</th>
+                                    <th>Email</th>
+                                    <th>Status</th>
+                                    <th>Created</th>
+                                    <th>Password Reset</th>
+                                    <th>Department</th>
+                                    <th>Branch Location</th>
+                                    <th>Mobile</th>
+                                    <th>Actions</th>
+                                </tr>
+                            </thead>
+                            <tbody>
+                                {% for user in users %}
+                                <tr class="user-row" data-user-id="{{ user.id }}">
+                                    <td>{{ user.id }}</td>
+                                    <td>{{ user.email }}</td>
+                                    <td>
+                                        {% if user.is_admin %}
+                                            <span class="badge bg-danger status-badge">
+                                                <i class="fas fa-crown"></i> Admin
+                                            </span>
+                                        {% elif user.is_approved %}
+                                            <span class="badge bg-success status-badge">
+                                                <i class="fas fa-check"></i> Approved
+                                            </span>
+                                        {% else %}
+                                            <span class="badge bg-warning status-badge">
+                                                <i class="fas fa-clock"></i> Pending
+                                            </span>
+                                        {% endif %}
+                                    </td>
+                                    <td>{{ user.created_at }}</td>
+                                    <td>
+                                        {% if user.password_reset_requested %}
+                                            <span class="badge bg-warning status-badge">
+                                                <i class="fas fa-key"></i> Reset Requested
+                                            </span>
+                                            <br><small class="text-muted">{{ user.password_reset_date }}</small>
+                                        {% else %}
+                                            <span class="text-muted">-</span>
+                                        {% endif %}
+                                    </td>
+                                    <td>{{ user.department }}</td>
+                                    <td>{{ user.branch_location }}</td>
+                                    <td>{{ user.mobile }}</td>
+                                    <td class="action-buttons">
+                                        {% if not user.is_approved and not user.is_admin %}
+                                            <button class="btn btn-success btn-sm approve-btn" data-user-id="{{ user.id }}">
+                                                <i class="fas fa-check"></i> Approve
+                                            </button>
+                                            <button class="btn btn-danger btn-sm reject-btn" data-user-id="{{ user.id }}">
+                                                <i class="fas fa-times"></i> Reject
+                                            </button>
+                                        {% endif %}
+                                        {% if not user.is_admin %}
+                                            <button class="btn btn-primary btn-sm toggle-admin-btn" data-user-id="{{ user.id }}">
+                                                <i class="fas fa-crown"></i> Make Admin
+                                            </button>
+                                        {% else %}
+                                            <button class="btn btn-warning btn-sm toggle-admin-btn" data-user-id="{{ user.id }}">
+                                                <i class="fas fa-user"></i> Remove Admin
+                                            </button>
+                                        {% endif %}
+                                        {% if user.password_reset_requested %}
+                                            <button class="btn btn-info btn-sm password-reset-btn" data-user-id="{{ user.id }}" data-user-email="{{ user.email }}">
+                                                <i class="fas fa-key"></i> Set Password
+                                            </button>
+                                            <button class="btn btn-secondary btn-sm clear-reset-btn" data-user-id="{{ user.id }}">
+                                                <i class="fas fa-times"></i> Clear Request
+                                            </button>
+                                        {% endif %}
+                                        {% if not user.is_admin %}
+                                            <button class="btn btn-danger btn-sm delete-user-btn" data-user-id="{{ user.id }}" data-user-email="{{ user.email }}">
+                                                <i class="fas fa-trash"></i> Delete
+                                            </button>
+                                        {% endif %}
+                                    </td>
+                                </tr>
+                                {% endfor %}
+                            </tbody>
+                        </table>
+                    </div>
+                    {% else %}
+                    <div class="text-center py-4">
+                        <i class="fas fa-users fa-3x text-muted mb-3"></i>
+                        <h5 class="text-muted">No users found</h5>
+                        <p class="text-muted">Users will appear here once they sign up.</p>
+                    </div>
+                    {% endif %}
+                </div>
+            </div>
+
+            <!-- User Activity Table -->
+            <div class="card mt-4">
+                <div class="card-header">
+                    <div class="row align-items-center">
+                        <div class="col">
+                            <h5 class="mb-0">
+                                <i class="fas fa-history"></i> User Activity Log
+                            </h5>
+                        </div>
+                        <div class="col-auto">
+                            <button class="btn btn-outline-secondary btn-sm" onclick="clearActivityFilters()">
+                                <i class="fas fa-times"></i> Clear Filters
+                            </button>
+                        </div>
+                    </div>
+                </div>
+                <div class="card-body">
+                    <!-- Activity Filter Controls -->
+                    <div class="row mb-3">
+                        <div class="col-md-3">
+                            <label for="eventFilter" class="form-label">Event Type</label>
+                            <select class="form-select form-select-sm" id="eventFilter">
+                                <option value="">All Events</option>
+                                <option value="login">Login</option>
+                                <option value="logout">Logout</option>
+                                <option value="signup">Signup</option>
+                            </select>
+                        </div>
+                        <div class="col-md-3">
+                            <label for="activitySearchFilter" class="form-label">Search User</label>
+                            <input type="text" class="form-control form-control-sm" id="activitySearchFilter" placeholder="Search by email...">
+                        </div>
+                        <div class="col-md-3">
+                            <label for="dateFromFilter" class="form-label">From Date</label>
+                            <input type="date" class="form-control form-control-sm" id="dateFromFilter">
+                        </div>
+                        <div class="col-md-3">
+                            <label for="dateToFilter" class="form-label">To Date</label>
+                            <input type="date" class="form-control form-control-sm" id="dateToFilter">
+                        </div>
+                    </div>
+                    
+                    {% if activities %}
+                    <div class="table-responsive">
+                        <table class="table table-hover table-sm" id="activityTable">
+                            <thead class="table-light">
+                                <tr>
+                                    <th>Timestamp</th>
+                                    <th>User</th>
+                                    <th>Event</th>
+                                </tr>
+                            </thead>
+                            <tbody>
+                                {% for activity in activities %}
+                                <tr data-event="{{ activity.event_type }}" 
+                                    data-email="{{ activity.email }}"
+                                    data-timestamp="{{ activity.timestamp }}">
+                                    <td>{{ activity.timestamp }}</td>
+                                    <td>{{ activity.email }}</td>
+                                    <td>
+                                        {% if activity.event_type == 'login' %}
+                                            <span class="badge bg-success">
+                                                <i class="fas fa-sign-in-alt"></i> Login
+                                            </span>
+                                        {% elif activity.event_type == 'logout' %}
+                                            <span class="badge bg-secondary">
+                                                <i class="fas fa-sign-out-alt"></i> Logout
+                                            </span>
+                                        {% else %}
+                                            <span class="badge bg-info">{{ activity.event_type }}</span>
+                                        {% endif %}
+                                    </td>
+                                </tr>
+                                {% endfor %}
+                            </tbody>
+                        </table>
+                    </div>
+                    {% else %}
+                    <div class="text-center py-4">
+                        <i class="fas fa-history fa-3x text-muted mb-3"></i>
+                        <h5 class="text-muted">No activity found</h5>
+                        <p class="text-muted">User activity will appear here once users log in and out.</p>
+                    </div>
+                    {% endif %}
+                </div>
+            </div>
+
+            <!-- File Activity Table -->
+            <div class="card mt-4">
+                <div class="card-header">
+                    <div class="row align-items-center">
+                        <div class="col">
+                            <h5 class="mb-0">
+                                <i class="fas fa-file-image"></i> File Activity Log
+                            </h5>
+                        </div>
+                        <div class="col-auto">
+                            <button class="btn btn-outline-secondary btn-sm" onclick="clearFileFilters()">
+                                <i class="fas fa-times"></i> Clear Filters
+                            </button>
+                        </div>
+                    </div>
+                </div>
+                <div class="card-body">
+                    <!-- File Activity Filter Controls -->
+                    <div class="row mb-3">
+                        <div class="col-md-3">
+                            <label for="fileStatusFilter" class="form-label">File Status</label>
+                            <select class="form-select form-select-sm" id="fileStatusFilter">
+                                <option value="">All Statuses</option>
+                                <option value="uploaded">Uploaded</option>
+                                <option value="enhanced">Enhanced</option>
+                                <option value="error">Error</option>
+                            </select>
+                        </div>
+                        <div class="col-md-3">
+                            <label for="fileUserFilter" class="form-label">Search User</label>
+                            <input type="text" class="form-control form-control-sm" id="fileUserFilter" placeholder="Search by email...">
+                        </div>
+                        <div class="col-md-3">
+                            <label for="fileDateFromFilter" class="form-label">From Date</label>
+                            <input type="date" class="form-control form-control-sm" id="fileDateFromFilter">
+                        </div>
+                        <div class="col-md-3">
+                            <label for="fileDateToFilter" class="form-label">To Date</label>
+                            <input type="date" class="form-control form-control-sm" id="fileDateToFilter">
+                        </div>
+                    </div>
+                    
+                    {% if files %}
+                    <div class="table-responsive">
+                        <table class="table table-hover table-sm" id="fileTable">
+                            <thead class="table-light">
+                                <tr>
+                                    <th>Upload Time</th>
+                                    <th>User</th>
+                                    <th>Original File</th>
+                                    <th>Enhanced File</th>
+                                    <th>File Size</th>
+                                    <th>Status</th>
+                                    <th>Enhancement Time</th>
+                                </tr>
+                            </thead>
+                            <tbody>
+                                {% for file in files %}
+                                <tr data-status="{{ file.status }}" 
+                                    data-email="{{ file.email }}"
+                                    data-upload-time="{{ file.upload_time }}">
+                                    <td>{{ file.upload_time }}</td>
+                                    <td>{{ file.email }}</td>
+                                    <td>{{ file.original_filename }}</td>
+                                    <td>{{ file.enhanced_filename if file.enhanced_filename else '-' }}</td>
+                                    <td>
+                                        {% if file.file_size %}
+                                            {% if file.file_size < 1024 %}
+                                                {{ file.file_size }} B
+                                            {% elif file.file_size < 1048576 %}
+                                                {{ "%.1f"|format(file.file_size / 1024) }} KB
+                                            {% else %}
+                                                {{ "%.1f"|format(file.file_size / 1048576) }} MB
+                                            {% endif %}
+                                        {% else %}
+                                            -
+                                        {% endif %}
+                                    </td>
+                                    <td>
+                                        {% if file.status == 'uploaded' %}
+                                            <span class="badge bg-primary">
+                                                <i class="fas fa-upload"></i> Uploaded
+                                            </span>
+                                        {% elif file.status == 'enhanced' %}
+                                            <span class="badge bg-success">
+                                                <i class="fas fa-magic"></i> Enhanced
+                                            </span>
+                                        {% elif file.status == 'error' %}
+                                            <span class="badge bg-danger">
+                                                <i class="fas fa-exclamation-triangle"></i> Error
+                                            </span>
+                                        {% else %}
+                                            <span class="badge bg-secondary">{{ file.status }}</span>
+                                        {% endif %}
+                                    </td>
+                                    <td>{{ file.enhancement_time if file.enhancement_time else '-' }}</td>
+                                </tr>
+                                {% endfor %}
+                            </tbody>
+                        </table>
+                    </div>
+                    {% else %}
+                    <div class="text-center py-4">
+                        <i class="fas fa-file-image fa-3x text-muted mb-3"></i>
+                        <h5 class="text-muted">No file activity found</h5>
+                        <p class="text-muted">File uploads and enhancements will appear here once users start using the service.</p>
+                    </div>
+                    {% endif %}
+                </div>
+            </div>
+
+            <!-- System Monitoring Dashboard -->
+            <div class="card mt-4">
+                <div class="card-header">
+                    <div class="row align-items-center">
+                        <div class="col">
+                            <h5 class="mb-0">
+                                <i class="fas fa-chart-line"></i> System Monitoring
+                                <span class="badge bg-success ms-2">
+                                    <i class="fas fa-circle"></i> Active
+                                </span>
+                            </h5>
+                        </div>
+                    </div>
+                </div>
+                <div class="card-body">
+                    <div class="row">
+                        <div class="col-md-3">
+                            <div class="card bg-primary text-white">
+                                <div class="card-body">
+                                    <h6 class="card-title">CPU Usage</h6>
+                                    <h3 id="cpuUsage">--%</h3>
+                                </div>
+                            </div>
+                        </div>
+                        <div class="col-md-3">
+                            <div class="card bg-success text-white">
+                                <div class="card-body">
+                                    <h6 class="card-title">Memory Usage</h6>
+                                    <h3 id="memoryUsage">--%</h3>
+                                </div>
+                            </div>
+                        </div>
+                        <div class="col-md-3">
+                            <div class="card bg-warning text-white">
+                                <div class="card-body">
+                                    <h6 class="card-title">Disk Usage</h6>
+                                    <h3 id="diskUsage">--%</h3>
+                                </div>
+                            </div>
+                        </div>
+                        <div class="col-md-3">
+                            <div class="card bg-info text-white">
+                                <div class="card-body">
+                                    <h6 class="card-title">GPU Memory</h6>
+                                    <h3 id="gpuMemory">--%</h3>
+                                </div>
+                            </div>
+                        </div>
+                    </div>
+                    <div class="row mt-3">
+                        <div class="col-12">
+                            <div class="table-responsive">
+                                <table class="table table-sm">
+                                    <thead>
+                                        <tr>
+                                            <th>Metric</th>
+                                            <th>Current Value</th>
+                                            <th>Details</th>
+                                        </tr>
+                                    </thead>
+                                    <tbody id="systemStats">
+                                        <tr>
+                                            <td colspan="3" class="text-center">Loading system stats...</td>
+                                        </tr>
+                                    </tbody>
+                                </table>
+                            </div>
+                        </div>
+                    </div>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <!-- Toast for notifications -->
+    <div class="toast-container position-fixed bottom-0 end-0 p-3">
+        <div id="notificationToast" class="toast" role="alert">
+            <div class="toast-header">
+                <strong class="me-auto">Notification</strong>
+                <button type="button" class="btn-close" data-bs-dismiss="toast"></button>
+            </div>
+            <div class="toast-body" id="toastMessage"></div>
+        </div>
+    </div>
+
+    <!-- Password Reset Modal -->
+    <div class="modal fade" id="passwordResetModal" tabindex="-1">
+        <div class="modal-dialog">
+            <div class="modal-content">
+                <div class="modal-header">
+                    <h5 class="modal-title">Set New Password</h5>
+                    <button type="button" class="btn-close" data-bs-dismiss="modal"></button>
+                </div>
+                <div class="modal-body">
+                    <p>Setting new password for: <strong id="resetUserEmail"></strong></p>
+                    <div class="mb-3">
+                        <label for="newPassword" class="form-label">New Password</label>
+                        <input type="password" class="form-control" id="newPassword" placeholder="Enter new password (min 6 characters)">
+                        <div class="form-text">Password must be at least 6 characters long.</div>
+                    </div>
+                    <div class="mb-3">
+                        <label for="confirmPassword" class="form-label">Confirm Password</label>
+                        <input type="password" class="form-control" id="confirmPassword" placeholder="Confirm new password">
+                    </div>
+                </div>
+                <div class="modal-footer">
+                    <button type="button" class="btn btn-secondary" data-bs-dismiss="modal">Cancel</button>
+                    <button type="button" class="btn btn-primary" id="confirmPasswordReset">Set Password</button>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <script src="https://cdn.jsdelivr.net/npm/bootstrap@5.1.3/dist/js/bootstrap.bundle.min.js"></script>
+    <script>
+        // Show notification toast
+        function showNotification(message, type = 'success') {
+            const toast = document.getElementById('notificationToast');
+            const toastMessage = document.getElementById('toastMessage');
+            toastMessage.textContent = message;
+            toast.classList.remove('bg-success', 'bg-danger', 'bg-warning');
+            toast.classList.add(`bg-${type}`);
+            const bsToast = new bootstrap.Toast(toast);
+            bsToast.show();
+        }
+
+        // Approve user
+        document.querySelectorAll('.approve-btn').forEach(btn => {
+            btn.addEventListener('click', function() {
+                const userId = this.dataset.userId;
+                if (confirm('Are you sure you want to approve this user?')) {
+                    fetch(`/admin/approve/${userId}`, {
+                        method: 'POST',
+                        headers: {
+                            'Content-Type': 'application/json',
+                        }
+                    })
+                    .then(response => response.json())
+                    .then(data => {
+                        if (data.success) {
+                            showNotification(data.message, 'success');
+                            setTimeout(() => location.reload(), 1000);
+                        } else {
+                            showNotification(data.error, 'danger');
+                        }
+                    })
+                    .catch(error => {
+                        showNotification('Error approving user', 'danger');
+                    });
+                }
+            });
+        });
+
+        // Reject user
+        document.querySelectorAll('.reject-btn').forEach(btn => {
+            btn.addEventListener('click', function() {
+                const userId = this.dataset.userId;
+                if (confirm('Are you sure you want to reject and delete this user? This action cannot be undone.')) {
+                    fetch(`/admin/reject/${userId}`, {
+                        method: 'POST',
+                        headers: {
+                            'Content-Type': 'application/json',
+                        }
+                    })
+                    .then(response => response.json())
+                    .then(data => {
+                        if (data.success) {
+                            showNotification(data.message, 'success');
+                            setTimeout(() => location.reload(), 1000);
+                        } else {
+                            showNotification(data.error, 'danger');
+                        }
+                    })
+                    .catch(error => {
+                        showNotification('Error rejecting user', 'danger');
+                    });
+                }
+            });
+        });
+
+        // Toggle admin status
+        document.querySelectorAll('.toggle-admin-btn').forEach(btn => {
+            btn.addEventListener('click', function() {
+                const userId = this.dataset.userId;
+                const isAdmin = this.innerHTML.includes('Remove Admin');
+                const action = isAdmin ? 'remove admin privileges from' : 'make admin';
+                
+                if (confirm(`Are you sure you want to ${action} this user?`)) {
+                    fetch(`/admin/toggle-admin/${userId}`, {
+                        method: 'POST',
+                        headers: {
+                            'Content-Type': 'application/json',
+                        }
+                    })
+                    .then(response => response.json())
+                    .then(data => {
+                        if (data.success) {
+                            showNotification(data.message, 'success');
+                            setTimeout(() => location.reload(), 1000);
+                        } else {
+                            showNotification(data.error, 'danger');
+                        }
+                    })
+                    .catch(error => {
+                        showNotification('Error updating admin status', 'danger');
+                    });
+                }
+            });
+        });
+
+        // Password reset functionality
+        let currentResetUserId = null;
+        const passwordResetModal = new bootstrap.Modal(document.getElementById('passwordResetModal'));
+
+        document.querySelectorAll('.password-reset-btn').forEach(btn => {
+            btn.addEventListener('click', function() {
+                currentResetUserId = this.dataset.userId;
+                document.getElementById('resetUserEmail').textContent = this.dataset.userEmail;
+                document.getElementById('newPassword').value = '';
+                document.getElementById('confirmPassword').value = '';
+                passwordResetModal.show();
+            });
+        });
+
+        document.getElementById('confirmPasswordReset').addEventListener('click', function() {
+            const newPassword = document.getElementById('newPassword').value;
+            const confirmPassword = document.getElementById('confirmPassword').value;
+
+            if (!newPassword || newPassword.length < 6) {
+                showNotification('Password must be at least 6 characters long', 'danger');
+                return;
+            }
+
+            if (newPassword !== confirmPassword) {
+                showNotification('Passwords do not match', 'danger');
+                return;
+            }
+
+            fetch(`/admin/password-reset/${currentResetUserId}`, {
+                method: 'POST',
+                headers: {
+                    'Content-Type': 'application/json',
+                },
+                body: JSON.stringify({ new_password: newPassword })
+            })
+            .then(response => response.json())
+            .then(data => {
+                if (data.success) {
+                    showNotification(data.message, 'success');
+                    passwordResetModal.hide();
+                    setTimeout(() => location.reload(), 1000);
+                } else {
+                    showNotification(data.error, 'danger');
+                }
+            })
+            .catch(error => {
+                showNotification('Error setting password', 'danger');
+            });
+        });
+
+        // Clear password reset request
+        document.querySelectorAll('.clear-reset-btn').forEach(btn => {
+            btn.addEventListener('click', function() {
+                const userId = this.dataset.userId;
+                if (confirm('Are you sure you want to clear this password reset request?')) {
+                    fetch(`/admin/clear-password-reset/${userId}`, {
+                        method: 'POST',
+                        headers: {
+                            'Content-Type': 'application/json',
+                        }
+                    })
+                    .then(response => response.json())
+                    .then(data => {
+                        if (data.success) {
+                            showNotification(data.message, 'success');
+                            setTimeout(() => location.reload(), 1000);
+                        } else {
+                            showNotification(data.error, 'danger');
+                        }
+                    })
+                    .catch(error => {
+                        showNotification('Error clearing password reset request', 'danger');
+                    });
+                }
+            });
+        });
+
+        // Delete user
+        document.querySelectorAll('.delete-user-btn').forEach(btn => {
+            btn.addEventListener('click', function() {
+                const userId = this.dataset.userId;
+                const userEmail = this.dataset.userEmail;
+                if (confirm(`Are you sure you want to delete this user? This action cannot be undone. All data related to ${userEmail} will be permanently deleted.`)) {
+                    fetch(`/admin/delete-user/${userId}`, {
+                        method: 'POST',
+                        headers: {
+                            'Content-Type': 'application/json',
+                        }
+                    })
+                    .then(response => response.json())
+                    .then(data => {
+                        if (data.success) {
+                            showNotification(data.message, 'success');
+                            setTimeout(() => location.reload(), 1000);
+                        } else {
+                            showNotification(data.error, 'danger');
+                        }
+                    })
+                    .catch(error => {
+                        showNotification('Error deleting user', 'danger');
+                    });
+                }
+            });
+        });
+
+        // Clear activity filters
+        function clearActivityFilters() {
+            document.getElementById('eventFilter').value = '';
+            document.getElementById('activitySearchFilter').value = '';
+            document.getElementById('dateFromFilter').value = '';
+            document.getElementById('dateToFilter').value = '';
+            filterActivity();
+        }
+
+        // Filter activity
+        function filterActivity() {
+            const eventFilter = document.getElementById('eventFilter').value;
+            const activitySearchFilter = document.getElementById('activitySearchFilter').value;
+            const dateFromFilter = document.getElementById('dateFromFilter').value;
+            const dateToFilter = document.getElementById('dateToFilter').value;
+
+            const activityTable = document.getElementById('activityTable');
+            const tbody = activityTable.getElementsByTagName('tbody')[0];
+            
+            // Get all original rows (including hidden ones)
+            const allRows = tbody.querySelectorAll('tr');
+            
+            allRows.forEach(row => {
+                const event = row.getAttribute('data-event');
+                const email = row.getAttribute('data-email');
+                const timestamp = row.getAttribute('data-timestamp');
+
+                const eventMatch = eventFilter === '' || event === eventFilter;
+                const searchMatch = activitySearchFilter === '' || email.toLowerCase().includes(activitySearchFilter.toLowerCase());
+                const dateMatch = (dateFromFilter === '' || timestamp >= dateFromFilter) && (dateToFilter === '' || timestamp <= dateToFilter);
+
+                const shouldShow = eventMatch && searchMatch && dateMatch;
+                row.style.display = shouldShow ? '' : 'none';
+            });
+        }
+
+        // Event listeners for activity filter inputs
+        document.getElementById('eventFilter').addEventListener('change', filterActivity);
+        document.getElementById('activitySearchFilter').addEventListener('input', filterActivity);
+        document.getElementById('dateFromFilter').addEventListener('input', filterActivity);
+        document.getElementById('dateToFilter').addEventListener('input', filterActivity);
+
+        // Clear file filters
+        function clearFileFilters() {
+            document.getElementById('fileStatusFilter').value = '';
+            document.getElementById('fileUserFilter').value = '';
+            document.getElementById('fileDateFromFilter').value = '';
+            document.getElementById('fileDateToFilter').value = '';
+            filterFiles();
+        }
+
+        // Filter files
+        function filterFiles() {
+            const fileStatusFilter = document.getElementById('fileStatusFilter').value;
+            const fileUserFilter = document.getElementById('fileUserFilter').value;
+            const fileDateFromFilter = document.getElementById('fileDateFromFilter').value;
+            const fileDateToFilter = document.getElementById('fileDateToFilter').value;
+
+            const fileTable = document.getElementById('fileTable');
+            const tbody = fileTable.getElementsByTagName('tbody')[0];
+            
+            // Get all original rows (including hidden ones)
+            const allRows = tbody.querySelectorAll('tr');
+            
+            allRows.forEach(row => {
+                const status = row.getAttribute('data-status');
+                const email = row.getAttribute('data-email');
+                const uploadTime = row.getAttribute('data-upload-time');
+
+                const statusMatch = fileStatusFilter === '' || status === fileStatusFilter;
+                const userMatch = fileUserFilter === '' || email.toLowerCase().includes(fileUserFilter.toLowerCase());
+                const dateMatch = (fileDateFromFilter === '' || uploadTime >= fileDateFromFilter) && (fileDateToFilter === '' || uploadTime <= fileDateToFilter);
+
+                const shouldShow = statusMatch && userMatch && dateMatch;
+                row.style.display = shouldShow ? '' : 'none';
+            });
+        }
+
+        // Event listeners for file filter inputs
+        document.getElementById('fileStatusFilter').addEventListener('change', filterFiles);
+        document.getElementById('fileUserFilter').addEventListener('input', filterFiles);
+        document.getElementById('fileDateFromFilter').addEventListener('input', filterFiles);
+        document.getElementById('fileDateToFilter').addEventListener('input', filterFiles);
+
+        let monitoringInterval = null;
+
+        function fetchSystemStats() {
+            fetch('/api/monitor/current')
+                .then(response => response.json())
+                .then(data => {
+                    if (data.cpu) {
+                        document.getElementById('cpuUsage').textContent = data.cpu.usage_percent + '%';
+                        document.getElementById('memoryUsage').textContent = data.cpu.memory_percent + '%';
+                    }
+                    if (data.disk) {
+                        document.getElementById('diskUsage').textContent = data.disk.percent.toFixed(1) + '%';
+                    }
+                    if (data.gpu && data.gpu.nvidia_gpus && data.gpu.nvidia_gpus[0]) {
+                        document.getElementById('gpuMemory').textContent = data.gpu.nvidia_gpus[0].memory_percent.toFixed(1) + '%';
+                    } else {
+                        document.getElementById('gpuMemory').textContent = '--%';
+                    }
+
+                    // Fill the details table
+                    let details = '';
+                    details += `<tr><td>CPU Cores</td><td>${data.cpu.count}</td><td></td></tr>`;
+                    details += `<tr><td>CPU Frequency</td><td>${data.cpu.frequency_mhz} MHz</td><td></td></tr>`;
+                    details += `<tr><td>RAM Used</td><td>${(data.cpu.memory_usage_mb).toFixed(1)} MB</td><td>${(data.cpu.memory_total_mb).toFixed(1)} MB total</td></tr>`;
+                    if (data.gpu && data.gpu.nvidia_gpus && data.gpu.nvidia_gpus[0]) {
+                        const gpu = data.gpu.nvidia_gpus[0];
+                        details += `<tr><td>GPU Name</td><td colspan="2">${gpu.name}</td></tr>`;
+                        details += `<tr><td>GPU Memory Used</td><td>${gpu.memory_used_mb.toFixed(1)} MB</td><td>${gpu.memory_total_mb.toFixed(1)} MB total</td></tr>`;
+                        details += `<tr><td>GPU Utilization</td><td>${gpu.utilization_percent}%</td><td>Temp: ${gpu.temperature_celsius}°C</td></tr>`;
+                    }
+                    document.getElementById('systemStats').innerHTML = details;
+                });
+        }
+
+        // Start fetching stats automatically every 5 seconds
+        fetchSystemStats();
+        monitoringInterval = setInterval(fetchSystemStats, 5000);
+    </script>
+</body>
+</html> 
