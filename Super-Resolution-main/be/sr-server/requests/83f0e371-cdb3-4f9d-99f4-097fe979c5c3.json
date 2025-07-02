@@ -1,0 +1,14 @@
+{
+  "timestamp": "2025-06-18 17:24:53.855247",
+  "taskId": "83f0e371-cdb3-4f9d-99f4-097fe979c5c3",
+  "userEmail": null,
+  "requestFilePath": "uploads/83f0e371-cdb3-4f9d-99f4-097fe979c5c3.jpg",
+  "requestProcessedImagesPaths": [
+    "processed/83f0e371-cdb3-4f9d-99f4-097fe979c5c3/83f0e371-cdb3-4f9d-99f4-097fe979c5c3_0.jpg",
+    "processed/83f0e371-cdb3-4f9d-99f4-097fe979c5c3/83f0e371-cdb3-4f9d-99f4-097fe979c5c3_1.jpg",
+    "processed/83f0e371-cdb3-4f9d-99f4-097fe979c5c3/83f0e371-cdb3-4f9d-99f4-097fe979c5c3_2.jpg",
+    "processed/83f0e371-cdb3-4f9d-99f4-097fe979c5c3/83f0e371-cdb3-4f9d-99f4-097fe979c5c3_3.jpg",
+    "processed/83f0e371-cdb3-4f9d-99f4-097fe979c5c3/83f0e371-cdb3-4f9d-99f4-097fe979c5c3_4.jpg"
+  ],
+  "ip_address": "127.0.0.1"
+}

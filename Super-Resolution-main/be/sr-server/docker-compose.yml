@@ -1,0 +1,22 @@
+services:
+  api:
+    build:
+      context: .
+      dockerfile: api.dockerfile
+    image: sr_api_image
+    container_name: sr_api
+    stdin_open: true
+    tty: true
+    restart: "no"
+    ports:
+      - "3073:3073"
+
+  rabbitmq:
+    image: rabbitmq:3.12-management
+    container_name: rabbitmq
+    ports:
+      - "5672:5672"  # AMQP
+      - "15672:15672"  # Management UI
+    # environment:
+    #   RABBITMQ_DEFAULT_USER: admin
+    #   RABBITMQ_DEFAULT_PASS: securepassword

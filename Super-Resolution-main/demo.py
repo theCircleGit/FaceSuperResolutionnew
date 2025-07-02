@@ -26,6 +26,7 @@ from reportlab.lib import colors
 from reportlab.platypus import SimpleDocTemplate, Paragraph, Spacer, Image as RLImage
 from reportlab.lib.styles import getSampleStyleSheet, ParagraphStyle
 from io import BytesIO
+import shutil
 
 # Import system monitoring
 from system_monitor import system_monitor
@@ -33,6 +34,8 @@ from system_monitor import system_monitor
 # --- Import real enhancement logic ---
 from super_resol import enhance_image_api_method
 import tensorflow as tf
+# --- Import PDF utility ---
+from utility import create_pdf
 
 app = Flask(__name__)
 CORS(app)
@@ -442,7 +445,7 @@ def enhance_image():
         
         try:
             # --- Use the real enhancement function ---
-            results = enhance_image_api_method(temp_path, model)
+            results = enhance_image_api_method(temp_path)
             if results is None:
                 # No face detected or error
                 update_file_enhancement(file_id, None, 'error')
@@ -451,6 +454,17 @@ def enhance_image():
 
             # results is a tuple of 5 PIL Images (one for each fidelity)
             enhanced_images = [image_to_base64(img) for img in results]
+
+            # Save the original image path (already saved as temp_path)
+            saved_original_path = os.path.join(app.config['UPLOAD_FOLDER'], f"original_{filename}")
+            shutil.copy(temp_path, saved_original_path)
+
+            # Save enhanced images to disk and collect their paths
+            enhanced_image_paths = []
+            for idx, img in enumerate(results):
+                enhanced_path = os.path.join(app.config['UPLOAD_FOLDER'], f"enhanced_{idx}_{filename}")
+                img.save(enhanced_path)
+                enhanced_image_paths.append(enhanced_path)
             
             # Update file record with enhancement completion
             enhanced_filename = f"enhanced_{filename}"
@@ -462,7 +476,9 @@ def enhance_image():
             return jsonify({
                 'success': True,
                 'enhanced_images': enhanced_images,
-                'message': 'Image enhanced successfully!'
+                'message': 'Image enhanced successfully!',
+                'original_image_path': saved_original_path,
+                'enhanced_image_paths': enhanced_image_paths
             })
             
         except Exception as e:
@@ -492,87 +508,33 @@ def generate_report():
     
     try:
         data = request.get_json()
-        original_image_data = data.get('original_image')
-        enhanced_image_data = data.get('enhanced_image')
+        original_image_path = data.get('original_image_path')
+        processed_images_paths = data.get('processed_images_paths')
         filename = data.get('filename', 'enhanced_image')
+        request_info = data.get('request_info', {
+            'timestamp': datetime.now().strftime('%Y-%m-%d %H:%M:%S'),
+            'taskId': 'N/A',
+            'userEmail': session.get('username', 'N/A')
+        })
         
-        if not original_image_data or not enhanced_image_data:
+        if not original_image_path or not processed_images_paths:
             return jsonify({'error': 'Missing image data'}), 400
         
-        # Create PDF in memory
-        buffer = BytesIO()
-        doc = SimpleDocTemplate(buffer, pagesize=A4)
-        story = []
-        styles = getSampleStyleSheet()
+        # --- File existence check ---
+        import os
+        missing = []
+        if not os.path.exists(original_image_path):
+            missing.append(original_image_path)
+        for p in processed_images_paths:
+            if not os.path.exists(p):
+                missing.append(p)
+        if missing:
+            return jsonify({'error': f'Missing image files: {missing}'}), 400
+        # --- End file existence check ---
         
-        # Title
-        title_style = ParagraphStyle(
-            'CustomTitle',
-            parent=styles['Heading1'],
-            fontSize=24,
-            spaceAfter=30,
-            alignment=1  # Center alignment
-        )
-        title = Paragraph("AI Super Resolution Report", title_style)
-        story.append(title)
-        story.append(Spacer(1, 20))
-        
-        # Report details
-        details_style = ParagraphStyle(
-            'Details',
-            parent=styles['Normal'],
-            fontSize=12,
-            spaceAfter=20
-        )
-        
-        # Add report information
-        report_info = f"""
-        <b>Report Generated:</b> {datetime.now().strftime('%Y-%m-%d %H:%M:%S')}<br/>
-        <b>User ID:</b> {session['user_id']}<br/>
-        <b>Original Filename:</b> {filename}<br/>
-        <b>Enhancement Type:</b> AI Super Resolution<br/>
-        <b>Processing Mode:</b> Demo Mode
-        """
-        
-        details = Paragraph(report_info, details_style)
-        story.append(details)
-        story.append(Spacer(1, 30))
-        
-        # Add sections for images
-        story.append(Paragraph("<b>Original Image:</b>", styles['Heading2']))
-        story.append(Paragraph("Original image before enhancement", styles['Normal']))
-        story.append(Spacer(1, 20))
-        
-        story.append(Paragraph("<b>Enhanced Image:</b>", styles['Heading2']))
-        story.append(Paragraph("AI-enhanced image with improved resolution and quality", styles['Normal']))
-        story.append(Spacer(1, 20))
-        
-        # Technical Details
-        story.append(Paragraph("<b>Technical Details:</b>", styles['Heading2']))
-        tech_details = """
-        • <b>Enhancement Algorithm:</b> AI Super Resolution<br/>
-        • <b>Processing Method:</b> Neural Network-based upscaling<br/>
-        • <b>Quality Improvement:</b> Enhanced resolution and detail preservation<br/>
-        • <b>Output Format:</b> High-quality PNG<br/>
-        • <b>Processing Time:</b> Optimized for real-time performance
-        """
-        story.append(Paragraph(tech_details, styles['Normal']))
-        story.append(Spacer(1, 30))
-        
-        # Footer
-        footer_style = ParagraphStyle(
-            'Footer',
-            parent=styles['Normal'],
-            fontSize=10,
-            textColor=colors.grey,
-            alignment=1
-        )
-        footer = Paragraph("Generated by AI Super Resolution System - Demo Mode", footer_style)
-        story.append(footer)
-        
-        # Build PDF
-        doc.build(story)
-        buffer.seek(0)
+        # Use the utility function to create the PDF
+        pdf_data = create_pdf(original_image_path, processed_images_paths, request_info)
+        buffer = BytesIO(pdf_data)
         
         # Return PDF as response
         return send_file(
@@ -583,6 +545,11 @@ def generate_report():
         )
         
     except Exception as e:
+        print(f"DEBUG: Error in generate_report: {str(e)}")
+        print(f"DEBUG: Original image path: {data.get('original_image_path')}")
+        print(f"DEBUG: Processed images paths: {data.get('processed_images_paths')}")
+        import traceback
+        traceback.print_exc()
         return jsonify({'error': f'Error generating report: {str(e)}'}), 500
 
 @app.route('/api/monitor/start', methods=['POST'])

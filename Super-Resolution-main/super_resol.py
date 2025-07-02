@@ -1099,7 +1099,7 @@ def enhance_image(image_path, model):
    
     #displayThree(AlignedFace_img, HR_Img_CodeFormer, HR_Img_CodeFormer)
 
-def enhance_image_api_method(image_path, model):
+def enhance_image_api_method(image_path, model=None):
     orig_Image = read_cv2_img(image_path) # To be removed to make it consistent
     PiLImage = align_face(image_path) ## Face cropped image
 

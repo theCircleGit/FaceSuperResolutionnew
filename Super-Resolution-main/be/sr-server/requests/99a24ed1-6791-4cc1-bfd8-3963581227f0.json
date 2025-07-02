@@ -1,0 +1,14 @@
+{
+  "timestamp": "2025-06-20 11:33:44.562428",
+  "taskId": "99a24ed1-6791-4cc1-bfd8-3963581227f0",
+  "userEmail": null,
+  "requestFilePath": "uploads/99a24ed1-6791-4cc1-bfd8-3963581227f0.jpg",
+  "requestProcessedImagesPaths": [
+    "processed/99a24ed1-6791-4cc1-bfd8-3963581227f0/99a24ed1-6791-4cc1-bfd8-3963581227f0_0.jpg",
+    "processed/99a24ed1-6791-4cc1-bfd8-3963581227f0/99a24ed1-6791-4cc1-bfd8-3963581227f0_1.jpg",
+    "processed/99a24ed1-6791-4cc1-bfd8-3963581227f0/99a24ed1-6791-4cc1-bfd8-3963581227f0_2.jpg",
+    "processed/99a24ed1-6791-4cc1-bfd8-3963581227f0/99a24ed1-6791-4cc1-bfd8-3963581227f0_3.jpg",
+    "processed/99a24ed1-6791-4cc1-bfd8-3963581227f0/99a24ed1-6791-4cc1-bfd8-3963581227f0_4.jpg"
+  ],
+  "ip_address": "127.0.0.1"
+}

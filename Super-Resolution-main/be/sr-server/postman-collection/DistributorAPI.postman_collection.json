@@ -1,0 +1,203 @@
+{
+	"info": {
+		"_postman_id": "8c4197d1-c0da-43e3-94df-f3dd64cc97c1",
+		"name": "DistributorAPI",
+		"schema": "https://schema.getpostman.com/json/collection/v2.1.0/collection.json"
+	},
+	"item": [
+		{
+			"name": "Get Task",
+			"event": [
+				{
+					"listen": "test",
+					"script": {
+						"id": "3eb37d0b-5c6a-4978-94f8-41d26b4ae7d2",
+						"exec": [
+							"let jsonData = pm.response.json();",
+							"let currentiter = pm.info.iteration;",
+							"let variableName = `taskId_${currentiter}`;",
+							"console.info(variableName, \" is \", jsonData.status)",
+							"// Assume jsonData.status tells you the task state",
+							"if (jsonData.status !== 'complete') {",
+							"    // If not done, set the next request to itself to poll again",
+							"    postman.setNextRequest(\"Get Task\");",
+							"} else {",
+							"    // Task completed, remove the specific taskId_<iteration> variable",
+							"",
+							"    pm.environment.unset(variableName);",
+							"    // Task completed, stop the loop",
+							"    postman.setNextRequest(null);",
+							"}"
+						],
+						"type": "text/javascript"
+					}
+				},
+				{
+					"listen": "prerequest",
+					"script": {
+						"id": "a56762e4-4026-4208-b087-10fb4d4e8dbd",
+						"exec": [
+							"currentiter = pm.info.iteration;",
+							"// console.info(currentiter)",
+							"let variableName = `taskId_${iteration}`;",
+							"// console.info(variableName)",
+							"let taskId = pm.environment.get(variableName);",
+							"// console.info(taskId)",
+							"pm.variables.set(\"currentTaskId\", taskId);"
+						],
+						"type": "text/javascript"
+					}
+				}
+			],
+			"request": {
+				"auth": {
+					"type": "bearer",
+					"bearer": [
+						{
+							"key": "token",
+							"value": "eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJzdWIiOiJjNzdmOWVjZS1jOTZlLTRhN2UtYTI1NS0yMGU3OTRkZmQ3YWYiLCJhdWQiOiJhdXRoZW50aWNhdGVkIiwiZXhwIjoxNzM5NDQ0NDI2LCJpYXQiOjE3Mzk0NDA4MjYsImVtYWlsIjoiYi5zaGFmaUBzYXQuYWUiLCJwaG9uZSI6IiIsImFwcF9tZXRhZGF0YSI6eyJwcm92aWRlciI6ImVtYWlsIiwicHJvdmlkZXJzIjpbImVtYWlsIl19LCJ1c2VyX21ldGFkYXRhIjp7fSwicm9sZSI6ImF1dGhlbnRpY2F0ZWQiLCJhYWwiOiJhYWwxIiwiYW1yIjpbeyJtZXRob2QiOiJwYXNzd29yZCIsInRpbWVzdGFtcCI6MTczOTQ0MDgyNn1dLCJzZXNzaW9uX2lkIjoiNjlkNDhlNzEtODExOC00NmEzLWI2ODAtNDdjOTlmZGJhMDU2IiwiaXNfYW5vbnltb3VzIjpmYWxzZX0.zUTmiwHK-R4MAKdB9uK9QDCcB5301o_-UdfOaMmV21Q",
+							"type": "string"
+						}
+					]
+				},
+				"method": "GET",
+				"header": [],
+				"url": {
+					"raw": "http://0.0.0.0:3073/api/task/{{currentTaskId}}",
+					"protocol": "http",
+					"host": [
+						"0",
+						"0",
+						"0",
+						"0"
+					],
+					"port": "3073",
+					"path": [
+						"api",
+						"task",
+						"{{currentTaskId}}"
+					]
+				}
+			},
+			"response": []
+		},
+		{
+			"name": "Create Task",
+			"event": [
+				{
+					"listen": "test",
+					"script": {
+						"id": "96c5452e-4d35-41af-b1f2-70bf15182434",
+						"exec": [
+							"let currentiter = pm.info.iteration;",
+							"let responseData = pm.response.json();",
+							"let taskId = responseData.task_id;",
+							"if (taskId) {",
+							"    pm.environment.set(`taskId_${currentiter}`, taskId);",
+							"}",
+							""
+						],
+						"type": "text/javascript"
+					}
+				}
+			],
+			"request": {
+				"auth": {
+					"type": "bearer",
+					"bearer": [
+						{
+							"key": "token",
+							"value": "eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJzdWIiOiJjNzdmOWVjZS1jOTZlLTRhN2UtYTI1NS0yMGU3OTRkZmQ3YWYiLCJhdWQiOiJhdXRoZW50aWNhdGVkIiwiZXhwIjoxNzM5NDQ0NDI2LCJpYXQiOjE3Mzk0NDA4MjYsImVtYWlsIjoiYi5zaGFmaUBzYXQuYWUiLCJwaG9uZSI6IiIsImFwcF9tZXRhZGF0YSI6eyJwcm92aWRlciI6ImVtYWlsIiwicHJvdmlkZXJzIjpbImVtYWlsIl19LCJ1c2VyX21ldGFkYXRhIjp7fSwicm9sZSI6ImF1dGhlbnRpY2F0ZWQiLCJhYWwiOiJhYWwxIiwiYW1yIjpbeyJtZXRob2QiOiJwYXNzd29yZCIsInRpbWVzdGFtcCI6MTczOTQ0MDgyNn1dLCJzZXNzaW9uX2lkIjoiNjlkNDhlNzEtODExOC00NmEzLWI2ODAtNDdjOTlmZGJhMDU2IiwiaXNfYW5vbnltb3VzIjpmYWxzZX0.zUTmiwHK-R4MAKdB9uK9QDCcB5301o_-UdfOaMmV21Q",
+							"type": "string"
+						}
+					]
+				},
+				"method": "POST",
+				"header": [],
+				"body": {
+					"mode": "formdata",
+					"formdata": [
+						{
+							"key": "image",
+							"type": "file",
+							"src": "/home/user/Downloads/images.jpeg"
+						}
+					],
+					"options": {
+						"formdata": {}
+					}
+				},
+				"url": {
+					"raw": "http://0.0.0.0:3073/api/task/create",
+					"protocol": "http",
+					"host": [
+						"0",
+						"0",
+						"0",
+						"0"
+					],
+					"port": "3073",
+					"path": [
+						"api",
+						"task",
+						"create"
+					]
+				}
+			},
+			"response": []
+		},
+		{
+			"name": "Create Test Task",
+			"event": [
+				{
+					"listen": "test",
+					"script": {
+						"id": "083863b0-5ef0-4af0-87b4-623302cc62e6",
+						"exec": [
+							"let currentiter = pm.info.iteration;",
+							"let responseData = pm.response.json();",
+							"let taskId = responseData.task_id;",
+							"if (taskId) {",
+							"    pm.environment.set(`taskId_${currentiter}`, taskId);",
+							"}",
+							""
+						],
+						"type": "text/javascript"
+					}
+				}
+			],
+			"request": {
+				"auth": {
+					"type": "bearer",
+					"bearer": [
+						{
+							"key": "token",
+							"value": "eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJzdWIiOiJjNzdmOWVjZS1jOTZlLTRhN2UtYTI1NS0yMGU3OTRkZmQ3YWYiLCJhdWQiOiJhdXRoZW50aWNhdGVkIiwiZXhwIjoxNzM5NDQ0NDI2LCJpYXQiOjE3Mzk0NDA4MjYsImVtYWlsIjoiYi5zaGFmaUBzYXQuYWUiLCJwaG9uZSI6IiIsImFwcF9tZXRhZGF0YSI6eyJwcm92aWRlciI6ImVtYWlsIiwicHJvdmlkZXJzIjpbImVtYWlsIl19LCJ1c2VyX21ldGFkYXRhIjp7fSwicm9sZSI6ImF1dGhlbnRpY2F0ZWQiLCJhYWwiOiJhYWwxIiwiYW1yIjpbeyJtZXRob2QiOiJwYXNzd29yZCIsInRpbWVzdGFtcCI6MTczOTQ0MDgyNn1dLCJzZXNzaW9uX2lkIjoiNjlkNDhlNzEtODExOC00NmEzLWI2ODAtNDdjOTlmZGJhMDU2IiwiaXNfYW5vbnltb3VzIjpmYWxzZX0.zUTmiwHK-R4MAKdB9uK9QDCcB5301o_-UdfOaMmV21Q",
+							"type": "string"
+						}
+					]
+				},
+				"method": "POST",
+				"header": [],
+				"url": {
+					"raw": "http://0.0.0.0:3073/api/task/test",
+					"protocol": "http",
+					"host": [
+						"0",
+						"0",
+						"0",
+						"0"
+					],
+					"port": "3073",
+					"path": [
+						"api",
+						"task",
+						"test"
+					]
+				}
+			},
+			"response": []
+		}
+	],
+	"protocolProfileBehavior": {}
+}

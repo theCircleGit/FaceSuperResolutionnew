@@ -16,6 +16,8 @@ class SuperResolutionApp {
         this.currentFile = null;
         this.originalImageData = null;
         this.enhancedImageData = null;
+        this.originalImagePath = null;
+        this.enhancedImagePaths = null;
         
         this.initializeEventListeners();
     }
@@ -116,6 +118,9 @@ class SuperResolutionApp {
 
             if (response.ok && data.success) {
                 this.displayResult(data.enhanced_images);
+                // Store file paths for report generation
+                this.originalImagePath = data.original_image_path;
+                this.enhancedImagePaths = data.enhanced_image_paths;
                 // Reset file input so user can upload a new image after enhancing
                 this.imageInput.value = '';
                 this.currentFile = null;
@@ -131,29 +136,62 @@ class SuperResolutionApp {
     }
 
     displayResult(enhancedImages) {
-        // Use the balanced enhancement (index 3, which corresponds to fidelity 0.5)
-        const enhancedImageData = enhancedImages[3];
+        // Display all 5 enhanced images with their corresponding fidelity levels
+        const imageIds = ['enhancedImage0', 'enhancedImage1', 'enhancedImage2', 'enhancedImage3', 'enhancedImage4'];
+        const fidelityLevels = [0.0, 0.7, 0.2, 0.5, 1.0]; // This matches the order returned by the backend
         
-        if (enhancedImageData) {
-            this.enhancedImageData = enhancedImageData;
-            this.enhancedImage.src = enhancedImageData;
+        if (enhancedImages && enhancedImages.length >= 5) {
+            // Store all enhanced image data
+            this.enhancedImageData = enhancedImages;
+            
+            // Set each enhanced image
+            for (let i = 0; i < 5; i++) {
+                const imgElement = document.getElementById(imageIds[i]);
+                if (imgElement && enhancedImages[i]) {
+                    imgElement.src = enhancedImages[i];
+                    // Add click event to open in modal
+                    imgElement.onclick = () => this.openImageModal(enhancedImages[i], `Fidelity ${fidelityLevels[i]}`);
+                }
+            }
             
             this.resultsCard.classList.remove('d-none');
             this.enhanceCard.classList.add('d-none');
             this.scrollToResults();
         } else {
-            this.showError('Failed to generate enhanced image');
+            this.showError('Failed to generate enhanced images');
         }
     }
 
     downloadEnhanced() {
-        if (this.enhancedImageData) {
+        // Download the balanced enhancement (index 3, fidelity 0.5)
+        if (this.enhancedImageData && this.enhancedImageData[3]) {
             const link = document.createElement('a');
-            link.href = this.enhancedImageData;
-            link.download = 'enhanced_image.png';
+            link.href = this.enhancedImageData[3];
+            link.download = 'enhanced_image_balanced.png';
             document.body.appendChild(link);
             link.click();
             document.body.removeChild(link);
+        }
+    }
+
+    downloadAllEnhanced() {
+        if (this.enhancedImageData && this.enhancedImageData.length >= 5) {
+            const fidelityLabels = ['maximum', 'conservative', 'high', 'balanced', 'minimal'];
+            const fidelityValues = [0.0, 0.7, 0.2, 0.5, 1.0];
+            
+            // Download each enhanced image individually
+            this.enhancedImageData.forEach((imageData, index) => {
+                if (imageData) {
+                    setTimeout(() => {
+                        const link = document.createElement('a');
+                        link.href = imageData;
+                        link.download = `enhanced_image_${fidelityLabels[index]}_${fidelityValues[index]}.png`;
+                        document.body.appendChild(link);
+                        link.click();
+                        document.body.removeChild(link);
+                    }, index * 200); // Stagger downloads to avoid browser blocking
+                }
+            });
         }
     }
 
@@ -199,7 +237,7 @@ class SuperResolutionApp {
     }
 
     generateReport() {
-        if (!this.originalImageData || !this.enhancedImageData) {
+        if (!this.originalImagePath || !this.enhancedImagePaths) {
             this.showError('No image data available for report generation');
             return;
         }
@@ -213,8 +251,8 @@ class SuperResolutionApp {
 
             // Prepare data for report
             const reportData = {
-                original_image: this.originalImageData,
-                enhanced_image: this.enhancedImageData,
+                original_image_path: this.originalImagePath,
+                processed_images_paths: this.enhancedImagePaths,
                 filename: this.currentFile ? this.currentFile.name : 'enhanced_image'
             };
 

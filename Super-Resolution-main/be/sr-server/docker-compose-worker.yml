@@ -1,0 +1,17 @@
+services:
+  app:
+    build:
+      context: .
+      dockerfile: app.dockerfile
+    image: dpbiomatrix/sr_image:1.4
+    container_name: sr_app
+    stdin_open: true
+    tty: true
+    restart: "no"
+    deploy:
+      resources:
+        reservations:
+          devices:
+            - driver: nvidia
+              count: 1
+              capabilities: [gpu]

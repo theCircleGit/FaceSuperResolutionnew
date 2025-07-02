@@ -1,0 +1,14 @@
+fastapi
+pydantic
+celery
+python-dotenv
+supabase
+uvicorn
+PyJWT
+python-dotenv
+python-multipart
+colorlog
+uuid7
+reportlab 
+httpx[http2]
+requests
