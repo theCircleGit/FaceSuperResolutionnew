@@ -27,7 +27,7 @@ import json
 from insightface.app import FaceAnalysis
 
 # Load face analysis model
-app = FaceAnalysis(name='thecircleface', root=".", providers=['CUDAExecutionProvider', 'CPUExecutionProvider'])
+app = FaceAnalysis(name='thecircleface', root="~/.insightface", providers=['CUDAExecutionProvider', 'CPUExecutionProvider'])
 app.prepare(ctx_id=0, det_size=(640, 640))
 
 # Global variables
