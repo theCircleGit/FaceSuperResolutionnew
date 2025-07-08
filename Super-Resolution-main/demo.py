@@ -36,6 +36,7 @@ from super_resol import enhance_image_api_method
 import tensorflow as tf
 # --- Import PDF utility ---
 from utility import create_pdf
+from genai_enhance import genai_enhance_image_api_method
 
 app = Flask(__name__)
 CORS(app)
@@ -489,6 +490,55 @@ def enhance_image():
                 os.remove(temp_path)
             return jsonify({'error': f'Error processing image: {str(e)}'}), 500
             
+    except Exception as e:
+        return jsonify({'error': f'Server error: {str(e)}'}), 500
+
+@app.route('/api/genai-enhance', methods=['POST'])
+def genai_enhance_image():
+    if 'user_id' not in session:
+        return jsonify({'error': 'Unauthorized. Please log in.'}), 401
+    try:
+        if 'image' not in request.files:
+            return jsonify({'error': 'No image file provided'}), 400
+        file = request.files['image']
+        if file.filename == '':
+            return jsonify({'error': 'No file selected'}), 400
+        if not allowed_file(file.filename):
+            return jsonify({'error': 'Invalid file type. Please upload an image file.'}), 400
+        filename = secure_filename(file.filename)
+        temp_path = os.path.join(app.config['UPLOAD_FOLDER'], f"{uuid.uuid4()}_{filename}")
+        file.save(temp_path)
+        file_size = os.path.getsize(temp_path)
+        file_id = log_file_activity(session['user_id'], filename, file_size, 'uploaded')
+        try:
+            results = genai_enhance_image_api_method(temp_path)
+            if results is None:
+                update_file_enhancement(file_id, None, 'error')
+                os.remove(temp_path)
+                return jsonify({'error': 'GENAI enhancement failed.'}), 400
+            enhanced_images = [image_to_base64(img) for img in results]
+            saved_original_path = os.path.join(app.config['UPLOAD_FOLDER'], f"original_{filename}")
+            shutil.copy(temp_path, saved_original_path)
+            enhanced_image_paths = []
+            for idx, img in enumerate(results):
+                enhanced_path = os.path.join(app.config['UPLOAD_FOLDER'], f"genai_enhanced_{idx}_{filename}")
+                img.save(enhanced_path)
+                enhanced_image_paths.append(enhanced_path)
+            enhanced_filename = f"genai_enhanced_{filename}"
+            update_file_enhancement(file_id, enhanced_filename, 'enhanced')
+            os.remove(temp_path)
+            return jsonify({
+                'success': True,
+                'enhanced_images': enhanced_images,
+                'message': 'GENAI enhancement successful!',
+                'original_image_path': saved_original_path,
+                'enhanced_image_paths': enhanced_image_paths
+            })
+        except Exception as e:
+            update_file_enhancement(file_id, None, 'error')
+            if os.path.exists(temp_path):
+                os.remove(temp_path)
+            return jsonify({'error': f'Error processing image: {str(e)}'}), 500
     except Exception as e:
         return jsonify({'error': f'Server error: {str(e)}'}), 500
 

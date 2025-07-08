@@ -55,6 +55,12 @@ class SuperResolutionApp {
             this.imageInput.value = '';
             this.imageInput.click();
         });
+
+        // Add event listener for GENAI button
+        const genaiBtn = document.getElementById('genaiEnhanceBtn');
+        if (genaiBtn) {
+            genaiBtn.addEventListener('click', () => this.enhanceWithGenai());
+        }
     }
 
     handleFileUpload(file) {
@@ -135,6 +141,38 @@ class SuperResolutionApp {
         }
     }
 
+    async enhanceWithGenai() {
+        if (!this.currentFile) {
+            this.showError('Please upload an image first');
+            return;
+        }
+        try {
+            this.showProcessing();
+            this.hideError();
+            const formData = new FormData();
+            formData.append('image', this.currentFile);
+            const response = await fetch('/api/genai-enhance', {
+                method: 'POST',
+                body: formData
+            });
+            const data = await response.json();
+            if (response.ok && data.success) {
+                this.displayGenaiResult(data.enhanced_images);
+                this.originalImagePath = data.original_image_path;
+                this.enhancedImagePaths = data.enhanced_image_paths;
+                this.imageInput.value = '';
+                this.currentFile = null;
+            } else {
+                this.showError(data.error || 'An error occurred while processing the image');
+            }
+        } catch (error) {
+            console.error('Error:', error);
+            this.showError('Network error. Please check your connection and try again.');
+        } finally {
+            this.hideProcessing();
+        }
+    }
+
     displayResult(enhancedImages) {
         // Display all 5 enhanced images with their corresponding fidelity levels
         const imageIds = ['enhancedImage0', 'enhancedImage1', 'enhancedImage2', 'enhancedImage3', 'enhancedImage4'];
@@ -159,6 +197,37 @@ class SuperResolutionApp {
             this.scrollToResults();
         } else {
             this.showError('Failed to generate enhanced images');
+        }
+    }
+
+    displayGenaiResult(enhancedImages) {
+        // Map GenAI images to the most relevant slots and update labels
+        const imageIds = ['enhancedImage0', 'enhancedImage1', 'enhancedImage2', 'enhancedImage3'];
+        const genaiLabels = [
+            "Grid Search (Low-Res)",
+            "High-Res SD",
+            "Upscaled (4x)",
+            "IP-Adapter Final"
+        ];
+        if (enhancedImages && enhancedImages.length >= 4) {
+            this.enhancedImageData = enhancedImages;
+            for (let i = 0; i < 4; i++) {
+                const imgElement = document.getElementById(imageIds[i]);
+                const labelElement = imgElement?.parentElement.querySelector('h6');
+                if (imgElement && enhancedImages[i]) {
+                    imgElement.src = enhancedImages[i];
+                    imgElement.onclick = () => this.openImageModal(enhancedImages[i], genaiLabels[i]);
+                    if (labelElement) labelElement.textContent = genaiLabels[i];
+                }
+            }
+            // Hide the 5th slot if present
+            const fifth = document.getElementById('enhancedImage4');
+            if (fifth) fifth.parentElement.style.display = 'none';
+            this.resultsCard.classList.remove('d-none');
+            this.enhanceCard.classList.add('d-none');
+            this.scrollToResults();
+        } else {
+            this.showError('Failed to generate GENAI enhanced images');
         }
     }
 
