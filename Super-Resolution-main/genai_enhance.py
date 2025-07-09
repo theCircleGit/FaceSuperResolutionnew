@@ -10,6 +10,8 @@ from transformers import CLIPProcessor, CLIPModel
 from sklearn.metrics.pairwise import cosine_similarity
 import torch.nn.functional as F
 import threading
+import torchvision.transforms as transforms
+import torchvision.models as models
 
 # --- GLOBALS ---
 DEVICE = "cuda" if torch.cuda.is_available() else "cpu"
@@ -17,6 +19,21 @@ IP_ADAPTER_PATH = "models/ip-adapter-plus-face_sd15.bin"
 
 # Simple lock to prevent concurrent requests
 _processing_lock = threading.Lock()
+
+# Load ResNet model for similarity computation
+print("🔍 Loading ResNet model for similarity computation...")
+resnet = models.resnet50(pretrained=True)
+resnet = torch.nn.Sequential(*list(resnet.children())[:-1])  # Remove final classification layer
+resnet.eval()
+resnet = resnet.to(DEVICE)
+
+# Image preprocessing for ResNet
+preprocess = transforms.Compose([
+    transforms.Resize(256),
+    transforms.CenterCrop(224),
+    transforms.ToTensor(),
+    transforms.Normalize(mean=[0.485, 0.456, 0.406], std=[0.229, 0.224, 0.225]),
+])
 
 clip_model = CLIPModel.from_pretrained("openai/clip-vit-base-patch32").to(DEVICE)
 clip_proc  = CLIPProcessor.from_pretrained("openai/clip-vit-base-patch32")
@@ -61,6 +78,42 @@ def clear_memory():
         torch.cuda.empty_cache()
         torch.cuda.ipc_collect()
     gc.collect()
+
+def get_image_embedding(image):
+    """Get ResNet feature embedding for an image"""
+    if isinstance(image, Image.Image):
+        tensor = preprocess(image).unsqueeze(0).to(DEVICE)
+    else:
+        tensor = image
+    
+    with torch.no_grad():
+        embedding = resnet(tensor)
+        embedding = embedding.view(embedding.size(0), -1)
+        # Normalize the embedding
+        embedding = F.normalize(embedding, p=2, dim=1)
+    return embedding
+
+def compute_similarity_scores(original_img, enhanced_images):
+    """Compute cosine similarity between original and enhanced images"""
+    print("🧮 Computing ResNet similarity scores...")
+    
+    # Get original image embedding
+    original_embedding = get_image_embedding(original_img)
+    
+    similarities = []
+    labels = ["Grid Search", "High-Res SD", "Upscaled", "IP-Adapter Final"]
+    
+    for i, enhanced_img in enumerate(enhanced_images):
+        enhanced_embedding = get_image_embedding(enhanced_img)
+        similarity = F.cosine_similarity(original_embedding, enhanced_embedding).item()
+        similarities.append(float(similarity))  # Convert to Python float
+        print(f"   → {labels[i]} similarity: {similarity:.4f}")
+    
+    # Find the index of the most similar image
+    best_idx = int(np.argmax(similarities))  # Convert numpy int64 to Python int
+    print(f"✅ Most similar image: {labels[best_idx]} (similarity: {similarities[best_idx]:.4f})")
+    
+    return similarities, best_idx
 
 def detect_face(image):
     try:
@@ -289,6 +342,10 @@ def genai_enhance_image_api_method(image_path):
         ).images[0]
         grid_result = apply_face_mask(hr, grid_result)
 
+        # ── COMPUTE SIMILARITY SCORES ────────────────────────────────────────────────────
+        enhanced_images = [grid_result, final, final_hr, img_final]
+        similarity_scores, recommended_idx = compute_similarity_scores(img, enhanced_images)
+
         # Final memory cleanup
         clear_memory()
 
@@ -298,8 +355,12 @@ def genai_enhance_image_api_method(image_path):
         final_hr.save("debug_genai_upscaled.jpg")
         img_final.save("debug_genai_ipadapter.jpg")
         
-        # Return all 4 images (same as what the standalone script generates)
-        return [grid_result, final, final_hr, img_final]
+        # Return images with similarity information
+        return {
+            'images': enhanced_images,
+            'similarity_scores': similarity_scores,
+            'recommended_idx': recommended_idx
+        }
         
     finally:
         # Always release the lock

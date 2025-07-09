@@ -511,16 +511,21 @@ def genai_enhance_image():
         file_size = os.path.getsize(temp_path)
         file_id = log_file_activity(session['user_id'], filename, file_size, 'uploaded')
         try:
-            results = genai_enhance_image_api_method(temp_path)
-            if results is None:
+            result_data = genai_enhance_image_api_method(temp_path)
+            if result_data is None:
                 update_file_enhancement(file_id, None, 'error')
                 os.remove(temp_path)
                 return jsonify({'error': 'GENAI enhancement failed.'}), 400
-            enhanced_images = [image_to_base64(img) for img in results]
+            
+            # Extract images and metadata
+            enhanced_images = [image_to_base64(img) for img in result_data['images']]
+            similarity_scores = result_data['similarity_scores'] 
+            recommended_idx = result_data['recommended_idx']
+            
             saved_original_path = os.path.join(app.config['UPLOAD_FOLDER'], f"original_{filename}")
             shutil.copy(temp_path, saved_original_path)
             enhanced_image_paths = []
-            for idx, img in enumerate(results):
+            for idx, img in enumerate(result_data['images']):
                 enhanced_path = os.path.join(app.config['UPLOAD_FOLDER'], f"genai_enhanced_{idx}_{filename}")
                 img.save(enhanced_path)
                 enhanced_image_paths.append(enhanced_path)
@@ -530,6 +535,8 @@ def genai_enhance_image():
             return jsonify({
                 'success': True,
                 'enhanced_images': enhanced_images,
+                'similarity_scores': similarity_scores,
+                'recommended_idx': recommended_idx,
                 'message': 'GENAI enhancement successful!',
                 'original_image_path': saved_original_path,
                 'enhanced_image_paths': enhanced_image_paths
