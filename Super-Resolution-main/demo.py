@@ -58,9 +58,10 @@ def get_db():
 
 def init_db():
     conn = get_db()
-    # Add new fields: department, branch_location, mobile
+    # Add new fields: name, department, branch_location, mobile
     conn.execute('''CREATE TABLE IF NOT EXISTS users (
         id INTEGER PRIMARY KEY AUTOINCREMENT,
+        name TEXT DEFAULT '',
         username TEXT UNIQUE NOT NULL,
         password TEXT NOT NULL,
         email TEXT UNIQUE NOT NULL,
@@ -96,6 +97,10 @@ def init_db():
     )''')
     # Try to add columns if upgrading from old schema
     try:
+        conn.execute('ALTER TABLE users ADD COLUMN name TEXT DEFAULT ""')
+    except Exception:
+        pass
+    try:
         conn.execute('ALTER TABLE users ADD COLUMN department TEXT DEFAULT ""')
     except Exception:
         pass
@@ -117,9 +122,9 @@ def init_db():
     admin_password = 'admin123'  # You should change this in production
     existing_admin = conn.execute('SELECT * FROM users WHERE email = ?', (admin_email,)).fetchone()
     if not existing_admin:
-        conn.execute('''INSERT INTO users (username, password, email, is_verified, is_admin, is_approved) 
-                       VALUES (?, ?, ?, 1, 1, 1)''',
-                    (admin_email, generate_password_hash(admin_password), admin_email))
+        conn.execute('''INSERT INTO users (name, username, password, email, is_verified, is_admin, is_approved) 
+                       VALUES (?, ?, ?, ?, 1, 1, 1)''',
+                    ("Admin", admin_email, generate_password_hash(admin_password), admin_email))
         print(f"✅ Created default admin user: {admin_email} / {admin_password}")
     conn.commit()
     conn.close()
@@ -185,20 +190,21 @@ def index():
 @app.route('/signup', methods=['GET', 'POST'])
 def signup():
     if request.method == 'POST':
+        name = request.form['name']
         email = request.form['email']
         password = request.form['password']
         department = request.form['department']
         branch_location = request.form['branch_location']
         mobile = request.form['mobile']
-        print("Signup values:", department, branch_location, mobile)  # DEBUG
-        if not password or not email or not department or not branch_location or not mobile:
+        print("Signup values:", name, department, branch_location, mobile)  # DEBUG
+        if not name or not password or not email or not department or not branch_location or not mobile:
             return render_template('signup.html', error='Please fill in all fields.')
         conn = get_db()
         try:
             conn.execute('''INSERT INTO users 
-                (username, password, email, is_verified, is_admin, is_approved, department, branch_location, mobile)
-                VALUES (?, ?, ?, 1, 0, 0, ?, ?, ?)''',
-                (email, generate_password_hash(password), email, department, branch_location, mobile))
+                (name, username, password, email, is_verified, is_admin, is_approved, department, branch_location, mobile)
+                VALUES (?, ?, ?, ?, 1, 0, 0, ?, ?, ?)''',
+                (name, email, generate_password_hash(password), email, department, branch_location, mobile))
             conn.commit()
         except sqlite3.IntegrityError as e:
             conn.close()
@@ -271,20 +277,69 @@ def logout():
     session.clear()
     return redirect(url_for('login'))
 
+@app.route('/admin/data')
+def admin_data():
+    """Return JSON data for admin panel auto-refresh"""
+    if 'user_id' not in session or not session.get('is_admin'):
+        return jsonify({'error': 'Unauthorized'}), 401
+    
+    conn = get_db()
+    
+    # Get all users including the current admin
+    users = conn.execute('''
+        SELECT id, username, email, is_verified, is_admin, is_approved, created_at, 
+               password_reset_requested, password_reset_date, department, branch_location, mobile
+        FROM users 
+        ORDER BY created_at DESC
+    ''').fetchall()
+    
+    # Get recent user activity
+    activities = conn.execute('''
+        SELECT ua.id, ua.user_id, ua.event_type, ua.timestamp, ua.session_id, ua.ip_address,
+               u.email, u.username
+        FROM user_activity ua
+        JOIN users u ON ua.user_id = u.id
+        ORDER BY ua.timestamp DESC
+        LIMIT 50
+    ''').fetchall()
+    
+    # Get recent file activities
+    files = conn.execute('''
+        SELECT uf.id, uf.user_id, uf.original_filename, uf.enhanced_filename, 
+               uf.upload_time, uf.enhancement_time, uf.file_size, uf.status,
+               u.email, u.username
+        FROM user_files uf
+        JOIN users u ON uf.user_id = u.id
+        ORDER BY uf.upload_time DESC
+        LIMIT 50
+    ''').fetchall()
+    
+    conn.close()
+    
+    # Convert to dictionaries for JSON serialization
+    users_data = [dict(user) for user in users]
+    activities_data = [dict(activity) for activity in activities]
+    files_data = [dict(file) for file in files]
+    
+    return jsonify({
+        'users': users_data,
+        'activities': activities_data,
+        'files': files_data
+    })
+
 @app.route('/admin')
 def admin_panel():
     if 'user_id' not in session or not session.get('is_admin'):
         return redirect(url_for('login'))
     
     conn = get_db()
-    # Get all users except the current admin
+    # Get all users including the current admin
     users = conn.execute('''
-        SELECT id, username, email, is_verified, is_admin, is_approved, created_at, 
+        SELECT id, name, username, email, is_verified, is_admin, is_approved, created_at, 
                password_reset_requested, password_reset_date, department, branch_location, mobile
         FROM users 
-        WHERE id != ? 
         ORDER BY created_at DESC
-    ''', (session['user_id'],)).fetchall()
+    ''').fetchall()
     
     # Get recent user activity
     activities = conn.execute('''

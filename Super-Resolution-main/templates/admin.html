@@ -30,6 +30,9 @@
                         </h1>
                     </div>
                     <div class="col-auto">
+                        <span class="text-light me-2" id="autoRefreshStatus">
+                            <i class="fas fa-circle text-success"></i> Auto-refresh: 30s
+                        </span>
                         <a href="{{ url_for('index') }}" class="btn btn-outline-light me-2">
                             <i class="fas fa-home"></i> Home
                         </a>
@@ -93,6 +96,7 @@
                             <thead class="table-light">
                                 <tr>
                                     <th>ID</th>
+                                    <th>Name</th>
                                     <th>Email</th>
                                     <th>Status</th>
                                     <th>Created</th>
@@ -107,6 +111,7 @@
                                 {% for user in users %}
                                 <tr class="user-row" data-user-id="{{ user.id }}">
                                     <td>{{ user.id }}</td>
+                                    <td>{{ user.name }}</td>
                                     <td>{{ user.email }}</td>
                                     <td>
                                         {% if user.is_admin %}
@@ -203,7 +208,7 @@
                 <div class="card-body">
                     <!-- Activity Filter Controls -->
                     <div class="row mb-3">
-                        <div class="col-md-3">
+                        <div class="col-md-2">
                             <label for="eventFilter" class="form-label">Event Type</label>
                             <select class="form-select form-select-sm" id="eventFilter">
                                 <option value="">All Events</option>
@@ -212,9 +217,13 @@
                                 <option value="signup">Signup</option>
                             </select>
                         </div>
-                        <div class="col-md-3">
+                        <div class="col-md-2">
                             <label for="activitySearchFilter" class="form-label">Search User</label>
                             <input type="text" class="form-control form-control-sm" id="activitySearchFilter" placeholder="Search by email...">
+                        </div>
+                        <div class="col-md-2">
+                            <label for="ipAddressFilter" class="form-label">IP Address</label>
+                            <input type="text" class="form-control form-control-sm" id="ipAddressFilter" placeholder="Filter by IP...">
                         </div>
                         <div class="col-md-3">
                             <label for="dateFromFilter" class="form-label">From Date</label>
@@ -234,13 +243,15 @@
                                     <th>Timestamp</th>
                                     <th>User</th>
                                     <th>Event</th>
+                                    <th>IP Address</th>
                                 </tr>
                             </thead>
                             <tbody>
                                 {% for activity in activities %}
                                 <tr data-event="{{ activity.event_type }}" 
                                     data-email="{{ activity.email }}"
-                                    data-timestamp="{{ activity.timestamp }}">
+                                    data-timestamp="{{ activity.timestamp }}"
+                                    data-ip-address="{{ activity.ip_address or '' }}">
                                     <td>{{ activity.timestamp }}</td>
                                     <td>{{ activity.email }}</td>
                                     <td>
@@ -254,6 +265,13 @@
                                             </span>
                                         {% else %}
                                             <span class="badge bg-info">{{ activity.event_type }}</span>
+                                        {% endif %}
+                                    </td>
+                                    <td>
+                                        {% if activity.ip_address %}
+                                            <code class="text-muted">{{ activity.ip_address }}</code>
+                                        {% else %}
+                                            <span class="text-muted">-</span>
                                         {% endif %}
                                     </td>
                                 </tr>
@@ -497,6 +515,216 @@
 
     <script src="https://cdn.jsdelivr.net/npm/bootstrap@5.1.3/dist/js/bootstrap.bundle.min.js"></script>
     <script>
+        // Auto-refresh functionality
+        let refreshInterval = null;
+        let refreshCountdown = 30;
+        const REFRESH_INTERVAL = 30000; // 30 seconds
+
+        function startAutoRefresh() {
+            refreshInterval = setInterval(() => {
+                refreshCountdown--;
+                updateRefreshStatus();
+                
+                if (refreshCountdown <= 0) {
+                    refreshPage();
+                }
+            }, 1000);
+        }
+
+        function stopAutoRefresh() {
+            if (refreshInterval) {
+                clearInterval(refreshInterval);
+                refreshInterval = null;
+            }
+        }
+
+        // Start auto-refresh when page loads
+        document.addEventListener('DOMContentLoaded', function() {
+            startAutoRefresh();
+        });
+
+        // Stop auto-refresh when user is interacting with filters
+        document.addEventListener('input', function(e) {
+            if (e.target.id === 'eventFilter' || e.target.id === 'activitySearchFilter' || 
+                e.target.id === 'ipAddressFilter' || e.target.id === 'dateFromFilter' || 
+                e.target.id === 'dateToFilter' || e.target.id === 'fileStatusFilter' || 
+                e.target.id === 'fileUserFilter' || e.target.id === 'fileDateFromFilter' || 
+                e.target.id === 'fileDateToFilter') {
+                stopAutoRefresh();
+                setTimeout(() => {
+                    startAutoRefresh();
+                }, 10000); // Resume after 10 seconds of inactivity
+            }
+        });
+
+        function updateRefreshStatus() {
+            const statusElement = document.getElementById('autoRefreshStatus');
+            const icon = statusElement.querySelector('i');
+            
+            if (refreshCountdown <= 5) {
+                icon.className = 'fas fa-circle text-warning';
+                statusElement.innerHTML = `<i class="fas fa-circle text-warning"></i> Auto-refresh: ${refreshCountdown}s`;
+            } else {
+                icon.className = 'fas fa-circle text-success';
+                statusElement.innerHTML = `<i class="fas fa-circle text-success"></i> Auto-refresh: ${refreshCountdown}s`;
+            }
+        }
+
+        function refreshPage() {
+            // Show loading indicator
+            const refreshBtn = document.querySelector('button[onclick="refreshPage()"]');
+            const originalContent = refreshBtn.innerHTML;
+            refreshBtn.innerHTML = '<i class="fas fa-spinner fa-spin"></i> Refreshing...';
+            refreshBtn.disabled = true;
+            
+            // Try to refresh data via AJAX first, fallback to page reload
+            refreshDataViaAJAX().then(() => {
+                // Reset countdown
+                refreshCountdown = 30;
+                updateRefreshStatus();
+                
+                // Restore button
+                refreshBtn.innerHTML = originalContent;
+                refreshBtn.disabled = false;
+            }).catch(() => {
+                // Fallback to full page reload
+                location.reload();
+            });
+        }
+
+        async function refreshDataViaAJAX() {
+            try {
+                // Store current data for comparison
+                const currentActivityCount = document.querySelectorAll('#activityTable tbody tr').length;
+                const currentFileCount = document.querySelectorAll('#fileTable tbody tr').length;
+                
+                // Fetch updated data from the server
+                const response = await fetch('/admin/data');
+                if (!response.ok) {
+                    throw new Error('Failed to fetch data');
+                }
+                
+                const data = await response.json();
+                
+                // Update user stats
+                updateUserStats(data.users);
+                
+                // Update activity table
+                updateActivityTable(data.activities);
+                
+                // Update file table
+                updateFileTable(data.files);
+                
+                // Check for new data and highlight
+                const newActivityCount = data.activities.length;
+                const newFileCount = data.files.length;
+                
+                if (newActivityCount > currentActivityCount) {
+                    highlightNewRows('#activityTable', newActivityCount - currentActivityCount);
+                    showNotification(`New activity detected: +${newActivityCount - currentActivityCount} events`, 'info');
+                }
+                
+                if (newFileCount > currentFileCount) {
+                    highlightNewRows('#fileTable', newFileCount - currentFileCount);
+                    showNotification(`New file activity detected: +${newFileCount - currentFileCount} files`, 'info');
+                }
+                
+                // Show notification
+                showNotification('Data refreshed successfully', 'success');
+                
+            } catch (error) {
+                console.error('AJAX refresh failed:', error);
+                throw error; // Re-throw to trigger fallback
+            }
+        }
+
+        function highlightNewRows(tableSelector, newCount) {
+            const tbody = document.querySelector(`${tableSelector} tbody`);
+            if (!tbody) return;
+            
+            const rows = tbody.querySelectorAll('tr');
+            for (let i = 0; i < Math.min(newCount, rows.length); i++) {
+                rows[i].classList.add('table-warning');
+                setTimeout(() => {
+                    rows[i].classList.remove('table-warning');
+                }, 3000); // Remove highlight after 3 seconds
+            }
+        }
+
+        function updateUserStats(users) {
+            // Update stats cards
+            document.querySelector('.card.bg-primary .card-text').textContent = users.length;
+            document.querySelector('.card.bg-warning .card-text').textContent = 
+                users.filter(u => !u.is_approved && !u.is_admin).length;
+            document.querySelector('.card.bg-success .card-text').textContent = 
+                users.filter(u => u.is_approved).length;
+            document.querySelector('.card.bg-info .card-text').textContent = 
+                users.filter(u => u.is_admin).length;
+        }
+
+        function updateActivityTable(activities) {
+            const tbody = document.querySelector('#activityTable tbody');
+            if (!tbody) return;
+            
+            tbody.innerHTML = activities.map(activity => `
+                <tr data-event="${activity.event_type}" 
+                    data-email="${activity.email}"
+                    data-timestamp="${activity.timestamp}"
+                    data-ip-address="${activity.ip_address || ''}">
+                    <td>${activity.timestamp}</td>
+                    <td>${activity.email}</td>
+                    <td>
+                        ${activity.event_type === 'login' ? 
+                            '<span class="badge bg-success"><i class="fas fa-sign-in-alt"></i> Login</span>' :
+                            activity.event_type === 'logout' ?
+                            '<span class="badge bg-secondary"><i class="fas fa-sign-out-alt"></i> Logout</span>' :
+                            `<span class="badge bg-info">${activity.event_type}</span>`
+                        }
+                    </td>
+                    <td>
+                        ${activity.ip_address ? 
+                            `<code class="text-muted">${activity.ip_address}</code>` :
+                            '<span class="text-muted">-</span>'
+                        }
+                    </td>
+                </tr>
+            `).join('');
+        }
+
+        function updateFileTable(files) {
+            const tbody = document.querySelector('#fileTable tbody');
+            if (!tbody) return;
+            
+            tbody.innerHTML = files.map(file => {
+                const fileSize = file.file_size ? 
+                    (file.file_size < 1024 ? `${file.file_size} B` :
+                     file.file_size < 1048576 ? `${(file.file_size / 1024).toFixed(1)} KB` :
+                     `${(file.file_size / 1048576).toFixed(1)} MB`) : '-';
+                
+                const statusBadge = file.status === 'uploaded' ? 
+                    '<span class="badge bg-primary"><i class="fas fa-upload"></i> Uploaded</span>' :
+                    file.status === 'enhanced' ?
+                    '<span class="badge bg-success"><i class="fas fa-magic"></i> Enhanced</span>' :
+                    file.status === 'error' ?
+                    '<span class="badge bg-danger"><i class="fas fa-exclamation-triangle"></i> Error</span>' :
+                    `<span class="badge bg-secondary">${file.status}</span>`;
+                
+                return `
+                    <tr data-status="${file.status}" 
+                        data-email="${file.email}"
+                        data-upload-time="${file.upload_time}">
+                        <td>${file.upload_time}</td>
+                        <td>${file.email}</td>
+                        <td>${file.original_filename}</td>
+                        <td>${file.enhanced_filename || '-'}</td>
+                        <td>${fileSize}</td>
+                        <td>${statusBadge}</td>
+                        <td>${file.enhancement_time || '-'}</td>
+                    </tr>
+                `;
+            }).join('');
+        }
+
         // Show notification toast
         function showNotification(message, type = 'success') {
             const toast = document.getElementById('notificationToast');
@@ -701,6 +929,7 @@
         function clearActivityFilters() {
             document.getElementById('eventFilter').value = '';
             document.getElementById('activitySearchFilter').value = '';
+            document.getElementById('ipAddressFilter').value = ''; // Clear IP filter
             document.getElementById('dateFromFilter').value = '';
             document.getElementById('dateToFilter').value = '';
             filterActivity();
@@ -710,6 +939,7 @@
         function filterActivity() {
             const eventFilter = document.getElementById('eventFilter').value;
             const activitySearchFilter = document.getElementById('activitySearchFilter').value;
+            const ipAddressFilter = document.getElementById('ipAddressFilter').value;
             const dateFromFilter = document.getElementById('dateFromFilter').value;
             const dateToFilter = document.getElementById('dateToFilter').value;
 
@@ -723,12 +953,14 @@
                 const event = row.getAttribute('data-event');
                 const email = row.getAttribute('data-email');
                 const timestamp = row.getAttribute('data-timestamp');
+                const ipAddress = row.getAttribute('data-ip-address'); // Assuming data-ip-address is added by JS
 
                 const eventMatch = eventFilter === '' || event === eventFilter;
                 const searchMatch = activitySearchFilter === '' || email.toLowerCase().includes(activitySearchFilter.toLowerCase());
+                const ipMatch = ipAddressFilter === '' || ipAddress.toLowerCase().includes(ipAddressFilter.toLowerCase());
                 const dateMatch = (dateFromFilter === '' || timestamp >= dateFromFilter) && (dateToFilter === '' || timestamp <= dateToFilter);
 
-                const shouldShow = eventMatch && searchMatch && dateMatch;
+                const shouldShow = eventMatch && searchMatch && ipMatch && dateMatch;
                 row.style.display = shouldShow ? '' : 'none';
             });
         }
@@ -736,6 +968,7 @@
         // Event listeners for activity filter inputs
         document.getElementById('eventFilter').addEventListener('change', filterActivity);
         document.getElementById('activitySearchFilter').addEventListener('input', filterActivity);
+        document.getElementById('ipAddressFilter').addEventListener('input', filterActivity); // Add event listener for IP filter
         document.getElementById('dateFromFilter').addEventListener('input', filterActivity);
         document.getElementById('dateToFilter').addEventListener('input', filterActivity);
 
