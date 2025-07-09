@@ -146,6 +146,11 @@ class SuperResolutionApp {
             this.showError('Please upload an image first');
             return;
         }
+        const genaiBtn = document.getElementById('genaiEnhanceBtn');
+        if (genaiBtn) {
+            genaiBtn.disabled = true;
+            genaiBtn.innerHTML = '<i class="fas fa-spinner fa-spin"></i> Enhancing...';
+        }
         try {
             this.showProcessing();
             this.hideError();
@@ -155,6 +160,10 @@ class SuperResolutionApp {
                 method: 'POST',
                 body: formData
             });
+            if (response.status === 429) {
+                // Backend is busy, keep spinner/loading and do not show error
+                return;
+            }
             const data = await response.json();
             if (response.ok && data.success) {
                 this.displayGenaiResult(data.enhanced_images);
@@ -170,6 +179,10 @@ class SuperResolutionApp {
             this.showError('Network error. Please check your connection and try again.');
         } finally {
             this.hideProcessing();
+            if (genaiBtn) {
+                genaiBtn.disabled = false;
+                genaiBtn.innerHTML = '<i class="fas fa-robot"></i> Enhance with GENAI';
+            }
         }
     }
 
