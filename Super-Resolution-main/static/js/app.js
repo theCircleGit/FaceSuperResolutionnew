@@ -166,7 +166,7 @@ class SuperResolutionApp {
             }
             const data = await response.json();
             if (response.ok && data.success) {
-                this.displayGenaiResult(data.enhanced_images);
+                this.displayGenaiResult(data.enhanced_images, data.similarity_scores, data.recommended_idx);
                 this.originalImagePath = data.original_image_path;
                 this.enhancedImagePaths = data.enhanced_image_paths;
                 this.imageInput.value = '';
@@ -213,7 +213,7 @@ class SuperResolutionApp {
         }
     }
 
-    displayGenaiResult(enhancedImages) {
+    displayGenaiResult(enhancedImages, similarityScores, recommendedIdx) {
         // Map GenAI images to the most relevant slots and update labels
         const imageIds = ['enhancedImage0', 'enhancedImage1', 'enhancedImage2', 'enhancedImage3'];
         const genaiLabels = [
@@ -227,10 +227,27 @@ class SuperResolutionApp {
             for (let i = 0; i < 4; i++) {
                 const imgElement = document.getElementById(imageIds[i]);
                 const labelElement = imgElement?.parentElement.querySelector('h6');
+                
                 if (imgElement && enhancedImages[i]) {
                     imgElement.src = enhancedImages[i];
                     imgElement.onclick = () => this.openImageModal(enhancedImages[i], genaiLabels[i]);
                     if (labelElement) labelElement.textContent = genaiLabels[i];
+                    
+                    // Handle recommended badge
+                    let badgeContainer = imgElement?.parentElement.querySelector('.mt-2');
+                    if (!badgeContainer) {
+                        badgeContainer = document.createElement('div');
+                        badgeContainer.className = 'mt-2';
+                        imgElement.parentElement.appendChild(badgeContainer);
+                    }
+                    
+                    // Add recommended badge to the most similar image
+                    if (i === recommendedIdx) {
+                        badgeContainer.innerHTML = '<span class="badge bg-primary">Recommended</span>';
+                        console.log(`✅ Most similar image: ${genaiLabels[i]} (similarity: ${similarityScores?.[i]?.toFixed(4)})`);
+                    } else {
+                        badgeContainer.innerHTML = '';
+                    }
                 }
             }
             // Hide the 5th slot if present
