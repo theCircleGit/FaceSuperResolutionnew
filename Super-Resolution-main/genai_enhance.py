@@ -164,11 +164,6 @@ def genai_enhance_image_api_method(image_path):
         # Save input image for comparison
         img.save("debug_genai_input.jpg")
         
-        # Minimum size check
-        MIN_SIZE = 128
-        if img.width < MIN_SIZE or img.height < MIN_SIZE:
-            raise RuntimeError(f"Input image too small: {img.size}. Minimum size is {MIN_SIZE}x{MIN_SIZE}.")
-        
         # Prepare CLIP embeddings
         ti = clip_proc(text=[PROMPT], return_tensors="pt", padding=True).to(DEVICE)
         with torch.no_grad():
