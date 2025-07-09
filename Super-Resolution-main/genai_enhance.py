@@ -63,6 +63,12 @@ GUIDANCE_SCALES  = [5.0, 7.0, 9.0]
 LOWRES           = (320, 320)
 HIGHRES          = (768, 768)
 FACE_ENHANCE_STRENGTH = 0.7
+
+# Quality assessment parameters
+QUALITY_THRESHOLD = 1000.0   # Values above this are treated as max quality
+SIMILARITY_WEIGHT = 0.6      # Weight for ResNet cosine similarity
+QUALITY_WEIGHT = 0.4         # Weight for visual quality
+
 PROMPT = (
     "ultra-high-definition portrait, smooth skin texture, sharp facial features, eyes, nose, "
     "cinematic lighting, professional studio quality, 16k resolution, flawless complexion, "
@@ -114,6 +120,80 @@ def compute_similarity_scores(original_img, enhanced_images):
     print(f"✅ Most similar image: {labels[best_idx]} (similarity: {similarities[best_idx]:.4f})")
     
     return similarities, best_idx
+
+def compute_laplacian_quality(image):
+    """Estimate visual quality as variance of Laplacian on grayscale image"""
+    if isinstance(image, Image.Image):
+        # Convert PIL image to numpy array
+        img_array = np.array(image.convert('L'))
+    else:
+        img_array = image
+    
+    lap = cv2.Laplacian(img_array, cv2.CV_64F)
+    return float(lap.var())
+
+def compute_quality_scores(enhanced_images):
+    """Compute Laplacian quality scores for enhanced images"""
+    print("🔍 Computing Laplacian quality scores...")
+    
+    quality_scores = []
+    labels = ["Grid Search", "High-Res SD", "Upscaled", "IP-Adapter Final"]
+    
+    for i, enhanced_img in enumerate(enhanced_images):
+        quality_raw = compute_laplacian_quality(enhanced_img)
+        quality_norm = min(quality_raw / QUALITY_THRESHOLD, 1.0)
+        quality_scores.append({
+            'raw': float(quality_raw),
+            'normalized': float(quality_norm)
+        })
+        print(f"   → {labels[i]} quality: {quality_raw:.2f} (normalized: {quality_norm:.4f})")
+    
+    return quality_scores
+
+def compute_combined_scores(similarity_scores, quality_scores):
+    """Compute combined weighted scores using ResNet similarity + Laplacian quality"""
+    print("⚖️ Computing combined weighted scores...")
+    
+    combined_scores = []
+    labels = ["Grid Search", "High-Res SD", "Upscaled", "IP-Adapter Final"]
+    
+    for i in range(len(similarity_scores)):
+        similarity = similarity_scores[i]
+        quality_norm = quality_scores[i]['normalized']
+        
+        combined_score = SIMILARITY_WEIGHT * similarity + QUALITY_WEIGHT * quality_norm
+        combined_scores.append(float(combined_score))
+        
+        print(f"   → {labels[i]} combined score: {combined_score:.4f}")
+        print(f"      (ResNet: {similarity:.4f}, Quality: {quality_norm:.4f})")
+    
+    return combined_scores
+
+def compute_comprehensive_scores(original_img, enhanced_images):
+    """Compute both similarity and quality scores, then combine them"""
+    print("🎯 Computing comprehensive quality assessment...")
+    
+    # Compute ResNet similarity scores
+    similarity_scores, _ = compute_similarity_scores(original_img, enhanced_images)
+    
+    # Compute Laplacian quality scores
+    quality_scores = compute_quality_scores(enhanced_images)
+    
+    # Compute combined scores
+    combined_scores = compute_combined_scores(similarity_scores, quality_scores)
+    
+    # Find the index of the best combined score
+    best_idx = int(np.argmax(combined_scores))
+    labels = ["Grid Search", "High-Res SD", "Upscaled", "IP-Adapter Final"]
+    
+    print(f"🏆 Best combined score: {labels[best_idx]} (score: {combined_scores[best_idx]:.4f})")
+    
+    return {
+        'similarity_scores': similarity_scores,
+        'quality_scores': quality_scores,
+        'combined_scores': combined_scores,
+        'recommended_idx': best_idx
+    }
 
 def detect_face(image):
     try:
@@ -342,9 +422,9 @@ def genai_enhance_image_api_method(image_path):
         ).images[0]
         grid_result = apply_face_mask(hr, grid_result)
 
-        # ── COMPUTE SIMILARITY SCORES ────────────────────────────────────────────────────
+        # ── COMPUTE COMPREHENSIVE QUALITY ASSESSMENT ─────────────────────────────────────
         enhanced_images = [grid_result, final, final_hr, img_final]
-        similarity_scores, recommended_idx = compute_similarity_scores(img, enhanced_images)
+        comprehensive_scores = compute_comprehensive_scores(img, enhanced_images)
 
         # Final memory cleanup
         clear_memory()
@@ -355,11 +435,13 @@ def genai_enhance_image_api_method(image_path):
         final_hr.save("debug_genai_upscaled.jpg")
         img_final.save("debug_genai_ipadapter.jpg")
         
-        # Return images with similarity information
+        # Return images with comprehensive quality information
         return {
             'images': enhanced_images,
-            'similarity_scores': similarity_scores,
-            'recommended_idx': recommended_idx
+            'similarity_scores': comprehensive_scores['similarity_scores'],
+            'quality_scores': comprehensive_scores['quality_scores'],
+            'combined_scores': comprehensive_scores['combined_scores'],
+            'recommended_idx': comprehensive_scores['recommended_idx']
         }
         
     finally:

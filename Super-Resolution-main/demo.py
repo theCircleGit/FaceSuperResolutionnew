@@ -575,6 +575,8 @@ def genai_enhance_image():
             # Extract images and metadata
             enhanced_images = [image_to_base64(img) for img in result_data['images']]
             similarity_scores = result_data['similarity_scores'] 
+            quality_scores = result_data['quality_scores']
+            combined_scores = result_data['combined_scores']
             recommended_idx = result_data['recommended_idx']
             
             saved_original_path = os.path.join(app.config['UPLOAD_FOLDER'], f"original_{filename}")
@@ -591,6 +593,8 @@ def genai_enhance_image():
                 'success': True,
                 'enhanced_images': enhanced_images,
                 'similarity_scores': similarity_scores,
+                'quality_scores': quality_scores,
+                'combined_scores': combined_scores,
                 'recommended_idx': recommended_idx,
                 'message': 'GENAI enhancement successful!',
                 'original_image_path': saved_original_path,

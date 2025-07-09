@@ -269,4 +269,124 @@ for i in range(1, FINAL_NUM_ITERS + 1):
     img = out
     print("done")
 img.save(FINAL_OUTPUT_IMAGE)
-print(f"✅ Saved final → {FINAL_OUTPUT_IMAGE}") 
+print(f"✅ Saved final → {FINAL_OUTPUT_IMAGE}")
+
+# ── QUALITY ASSESSMENT WITH RESNET + LAPLACIAN ─────────────────────────────
+print("\n🔍 Running quality assessment...")
+
+# Import additional required modules
+from torchvision import models, transforms
+
+# Configuration for quality assessment
+QUALITY_THRESHOLD = 1000.0   # Values above this are treated as max quality
+SIMILARITY_WEIGHT = 0.6      # Weight for ResNet cosine similarity
+QUALITY_WEIGHT = 0.4         # Weight for visual quality
+
+# Define outputs to assess
+OUTPUTS_TO_ASSESS = [
+    OUTPUT_IMAGE,        # "output_1.png"
+    FINAL_HR_IMAGE,      # "high_res_intermediate.png"
+    IP_OUTPUT_IMAGE,     # "final_output.png"
+    FINAL_OUTPUT_IMAGE   # "output.png"
+]
+
+def load_image_for_assessment(image_path, transform, device):
+    """Load an image via PIL, apply preprocessing, and return a tensor."""
+    image = Image.open(image_path).convert('RGB')
+    tensor = transform(image).unsqueeze(0).to(device)
+    return tensor
+
+def get_feature_extractor(device):
+    """Return ResNet50 model truncated before the classification head."""
+    base = models.resnet50(pretrained=True)
+    layers = list(base.children())[:-1]
+    model = torch.nn.Sequential(*layers).to(device)
+    model.eval()
+    return model
+
+def extract_feature(model, image_tensor):
+    """Extract and L2-normalize features from an image tensor."""
+    with torch.no_grad():
+        feat = model(image_tensor)
+    feat = feat.view(feat.size(0), -1)
+    return F.normalize(feat, p=2, dim=1)
+
+def compute_laplacian_quality(image_path):
+    """Estimate visual quality as variance of Laplacian on grayscale image."""
+    img = cv2.imread(image_path, cv2.IMREAD_GRAYSCALE)
+    if img is None:
+        raise FileNotFoundError(f"Could not load image for quality assessment: {image_path}")
+    lap = cv2.Laplacian(img, cv2.CV_64F)
+    return float(lap.var())
+
+# Setup for assessment
+transform = transforms.Compose([
+    transforms.Resize(256),
+    transforms.CenterCrop(224),
+    transforms.ToTensor(),
+    transforms.Normalize(
+        mean=[0.485, 0.456, 0.406],
+        std=[0.229, 0.224, 0.225]
+    )
+])
+
+# Load reference image and setup model
+img1_t = load_image_for_assessment(INPUT_IMAGE, transform, DEVICE)
+model = get_feature_extractor(DEVICE)
+f1 = extract_feature(model, img1_t)
+
+# Assess each output
+results = []
+print("\n=== Quality Assessment Results ===")
+
+for out_path in OUTPUTS_TO_ASSESS:
+    try:
+        # Load and process output image
+        img2_t = load_image_for_assessment(out_path, transform, DEVICE)
+        f2 = extract_feature(model, img2_t)
+
+        # Compute ResNet similarity
+        similarity = F.cosine_similarity(f1, f2).item()
+
+        # Compute Laplacian quality
+        quality_raw = compute_laplacian_quality(out_path)
+        quality_norm = min(quality_raw / QUALITY_THRESHOLD, 1.0)
+
+        # Combined score
+        combined_score = SIMILARITY_WEIGHT * similarity + QUALITY_WEIGHT * quality_norm
+
+        # Store results
+        results.append({
+            'path': out_path,
+            'similarity': similarity,
+            'quality_raw': quality_raw,
+            'quality_norm': quality_norm,
+            'combined_score': combined_score
+        })
+
+        print(f"\n📁 {out_path}")
+        print(f"   ResNet similarity: {similarity:.4f}")
+        print(f"   Laplacian quality: {quality_raw:.2f}")
+        print(f"   Normalized quality: {quality_norm:.4f}")
+        print(f"   Combined score: {combined_score:.4f}")
+
+    except Exception as e:
+        print(f"\n❌ {out_path}: Error - {e}")
+
+# Find the best output
+if results:
+    best_result = max(results, key=lambda x: x['combined_score'])
+    print(f"\n🏆 RECOMMENDED: {best_result['path']}")
+    print(f"   Best combined score: {best_result['combined_score']:.4f}")
+    print(f"   (ResNet: {best_result['similarity']:.4f}, Quality: {best_result['quality_norm']:.4f})")
+
+    # Print ranking
+    print(f"\n📊 Ranking (highest to lowest score):")
+    sorted_results = sorted(results, key=lambda x: x['combined_score'], reverse=True)
+    for i, result in enumerate(sorted_results, 1):
+        marker = "🏆" if result == best_result else f"{i}."
+        print(f"   {marker} {result['path']}: {result['combined_score']:.4f}")
+else:
+    print("\n❌ No outputs could be assessed successfully")
+
+print("\n✅ Quality assessment complete!") 
