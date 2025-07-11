@@ -32,6 +32,17 @@
                         <h5 class="card-title">
                             <i class="fas fa-upload"></i> Upload Image
                         </h5>
+                        <div class="row mb-3">
+                            <div class="col-md-6">
+                                <label for="caseIdInput" class="form-label">
+                                    <i class="fas fa-folder"></i> Case ID (Optional)
+                                </label>
+                                <input type="text" class="form-control" id="caseIdInput" 
+                                       placeholder="Enter case ID for tracking" 
+                                       maxlength="50">
+                                <div class="form-text">Enter a case ID to help track and organize your image enhancements</div>
+                            </div>
+                        </div>
                         <div class="upload-area" id="uploadArea">
                             <div class="upload-content">
                                 <i class="fas fa-cloud-upload-alt fa-3x text-muted mb-3"></i>
@@ -139,8 +150,11 @@
                                 <button class="btn btn-primary me-2" onclick="app.downloadAllEnhanced()">
                                     <i class="fas fa-download"></i> Download All Enhanced
                                 </button>
-                                <button class="btn btn-success" onclick="app.generateReport()">
+                                <button class="btn btn-success me-2" onclick="app.generateReport()">
                                     <i class="fas fa-file-pdf"></i> Generate Report
+                                </button>
+                                <button class="btn btn-outline-primary" onclick="app.uploadNewImage()">
+                                    <i class="fas fa-upload"></i> Upload New Image
                                 </button>
                             </div>
                         </div>

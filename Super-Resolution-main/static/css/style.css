@@ -70,6 +70,101 @@ header h1 {
     pointer-events: all;
 }
 
+/* File Selection Indicator Styles */
+.file-info {
+    border: 1px solid #dee2e6;
+    background: #f8f9fa !important;
+    transition: all 0.3s ease;
+}
+
+.file-info:hover {
+    border-color: #667eea;
+    background: #f0f2ff !important;
+}
+
+.file-info .row {
+    margin: 0;
+}
+
+.file-info .col-12 {
+    padding: 5px 0;
+    border-bottom: 1px solid #e9ecef;
+}
+
+.file-info .col-12:last-child {
+    border-bottom: none;
+}
+
+.text-success {
+    color: #28a745 !important;
+}
+
+.btn-outline-secondary {
+    border-color: #6c757d;
+    color: #6c757d;
+    border-radius: 20px;
+    padding: 8px 20px;
+    font-size: 0.9rem;
+    transition: all 0.3s ease;
+}
+
+.btn-outline-secondary:hover {
+    background-color: #6c757d;
+    border-color: #6c757d;
+    color: white;
+    transform: translateY(-1px);
+}
+
+.btn-outline-primary {
+    border-color: #667eea;
+    color: #667eea;
+    border-radius: 25px;
+    padding: 10px 25px;
+    font-weight: 500;
+    transition: all 0.3s ease;
+}
+
+.btn-outline-primary:hover {
+    background: linear-gradient(45deg, #667eea, #764ba2);
+    border-color: #667eea;
+    color: white;
+    transform: translateY(-2px);
+    box-shadow: 0 5px 15px rgba(102, 126, 234, 0.4);
+}
+
+/* Case ID Input Styles */
+.form-label {
+    font-weight: 500;
+    color: #495057;
+    margin-bottom: 0.5rem;
+}
+
+.form-control {
+    border-radius: 10px;
+    border: 2px solid #e9ecef;
+    transition: all 0.3s ease;
+    padding: 0.75rem 1rem;
+}
+
+.form-control:focus {
+    border-color: #667eea;
+    box-shadow: 0 0 0 0.2rem rgba(102, 126, 234, 0.25);
+    outline: none;
+}
+
+.form-text {
+    font-size: 0.875rem;
+    color: #6c757d;
+    margin-top: 0.25rem;
+}
+
+/* Case ID in file info */
+.file-info .col-12:has(strong:contains("Case ID")) {
+    background-color: #e8f4fd;
+    border-left: 3px solid #667eea;
+    padding-left: 10px;
+}
+
 /* Button Styles */
 .btn-primary {
     background: linear-gradient(45deg, #667eea, #764ba2);

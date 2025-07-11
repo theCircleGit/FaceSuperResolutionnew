@@ -79,9 +79,78 @@ class SuperResolutionApp {
 
         this.currentFile = file;
         this.displayOriginalImage(file);
+        this.showFileSelected(file);
         this.showEnhanceCard();
         this.hideResults();
         this.hideError();
+    }
+
+    showFileSelected(file) {
+        // Update upload area to show selected file information
+        const uploadContent = this.uploadArea.querySelector('.upload-content');
+        const fileSize = (file.size / (1024 * 1024)).toFixed(2); // Convert to MB
+        const caseIdInput = document.getElementById('caseIdInput');
+        const caseId = caseIdInput ? caseIdInput.value.trim() : '';
+        
+        uploadContent.innerHTML = `
+            <div class="text-success mb-3">
+                <i class="fas fa-check-circle fa-3x"></i>
+            </div>
+            <h6 class="text-success mb-2">File Selected Successfully!</h6>
+            <div class="file-info bg-light p-3 rounded">
+                <div class="row">
+                    <div class="col-12">
+                        <strong>Filename:</strong> ${file.name}
+                    </div>
+                    <div class="col-12">
+                        <strong>Size:</strong> ${fileSize} MB
+                    </div>
+                    <div class="col-12">
+                        <strong>Type:</strong> ${file.type}
+                    </div>
+                    ${caseId ? `<div class="col-12">
+                        <strong>Case ID:</strong> ${caseId}
+                    </div>` : ''}
+                </div>
+            </div>
+            <div class="mt-3">
+                <button class="btn btn-outline-secondary btn-sm" id="changeFileBtn" type="button">
+                    <i class="fas fa-edit"></i> Change File
+                </button>
+            </div>
+        `;
+
+        // Add event listener for change file button
+        const changeFileBtn = document.getElementById('changeFileBtn');
+        if (changeFileBtn) {
+            changeFileBtn.addEventListener('click', () => {
+                this.resetUploadArea();
+                this.imageInput.click();
+            });
+        }
+    }
+
+    resetUploadArea() {
+        // Reset upload area to original state
+        const uploadContent = this.uploadArea.querySelector('.upload-content');
+        uploadContent.innerHTML = `
+            <i class="fas fa-cloud-upload-alt fa-3x text-muted mb-3"></i>
+            <p class="mb-2">Drag and drop your image here or click to browse</p>
+            <p class="text-muted small">Supports: JPG, PNG, GIF, BMP (Max: 16MB)</p>
+            <input type="file" id="imageInput" accept="image/*" class="d-none">
+            <button class="btn btn-primary" id="chooseFileBtn" type="button">
+                <i class="fas fa-folder-open"></i> Choose File
+            </button>
+        `;
+
+        // Re-add event listener for choose file button
+        const chooseFileBtn = document.getElementById('chooseFileBtn');
+        if (chooseFileBtn) {
+            chooseFileBtn.addEventListener('click', () => {
+                this.imageInput.value = '';
+                this.imageInput.click();
+            });
+        }
     }
 
     displayOriginalImage(file) {
@@ -114,6 +183,12 @@ class SuperResolutionApp {
 
             const formData = new FormData();
             formData.append('image', this.currentFile);
+            
+            // Add case ID if provided
+            const caseIdInput = document.getElementById('caseIdInput');
+            if (caseIdInput && caseIdInput.value.trim()) {
+                formData.append('case_id', caseIdInput.value.trim());
+            }
 
             const response = await fetch('/api/enhance', {
                 method: 'POST',
@@ -127,9 +202,10 @@ class SuperResolutionApp {
                 // Store file paths for report generation
                 this.originalImagePath = data.original_image_path;
                 this.enhancedImagePaths = data.enhanced_image_paths;
-                // Reset file input so user can upload a new image after enhancing
+                // Reset file input and upload area so user can upload a new image after enhancing
                 this.imageInput.value = '';
                 this.currentFile = null;
+                this.resetUploadArea();
             } else {
                 this.showError(data.error || 'An error occurred while processing the image');
             }
@@ -156,6 +232,13 @@ class SuperResolutionApp {
             this.hideError();
             const formData = new FormData();
             formData.append('image', this.currentFile);
+            
+            // Add case ID if provided
+            const caseIdInput = document.getElementById('caseIdInput');
+            if (caseIdInput && caseIdInput.value.trim()) {
+                formData.append('case_id', caseIdInput.value.trim());
+            }
+            
             const response = await fetch('/api/genai-enhance', {
                 method: 'POST',
                 body: formData
@@ -171,6 +254,7 @@ class SuperResolutionApp {
                 this.enhancedImagePaths = data.enhanced_image_paths;
                 this.imageInput.value = '';
                 this.currentFile = null;
+                this.resetUploadArea();
             } else {
                 this.showError(data.error || 'An error occurred while processing the image');
             }
@@ -333,6 +417,32 @@ class SuperResolutionApp {
                 block: 'start' 
             });
         }, 100);
+    }
+
+    uploadNewImage() {
+        // Reset everything and show upload area
+        this.currentFile = null;
+        this.originalImageData = null;
+        this.enhancedImageData = null;
+        this.originalImagePath = null;
+        this.enhancedImagePaths = null;
+        
+        // Hide results and enhance card
+        this.resultsCard.classList.add('d-none');
+        this.enhanceCard.classList.add('d-none');
+        this.hideError();
+        
+        // Reset upload area
+        this.resetUploadArea();
+        
+        // Clear file input
+        this.imageInput.value = '';
+        
+        // Scroll to upload area
+        this.uploadArea.scrollIntoView({ 
+            behavior: 'smooth', 
+            block: 'start' 
+        });
     }
 
     generateReport() {

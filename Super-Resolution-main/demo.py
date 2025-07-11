@@ -89,6 +89,7 @@ def init_db():
     conn.execute('''CREATE TABLE IF NOT EXISTS user_files (
         id INTEGER PRIMARY KEY AUTOINCREMENT,
         user_id INTEGER,
+        case_id TEXT DEFAULT NULL,
         original_filename TEXT,
         enhanced_filename TEXT,
         upload_time TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
@@ -122,6 +123,10 @@ def init_db():
         conn.execute('ALTER TABLE user_files ADD COLUMN error_message TEXT DEFAULT NULL')
     except Exception:
         pass
+    try:
+        conn.execute('ALTER TABLE user_files ADD COLUMN case_id TEXT DEFAULT NULL')
+    except Exception:
+        pass
     # Update existing users to be approved if they don't have the is_approved field set
     try:
         conn.execute('UPDATE users SET is_approved = 1 WHERE is_approved IS NULL')
@@ -152,17 +157,17 @@ def log_user_activity(user_id, event_type, session_id=None, ip_address=None, add
     conn.close()
     print(f"DEBUG: Activity logged successfully")
 
-def log_file_activity(user_id, original_filename, file_size, status='uploaded', error_message=None):
-    """Log file upload with optional error message"""
-    print(f"DEBUG: Logging file upload - User: {user_id}, File: {original_filename}, Size: {file_size}, Status: {status}")
+def log_file_activity(user_id, original_filename, file_size, status='uploaded', error_message=None, case_id=None):
+    """Log file upload with optional error message and case ID"""
+    print(f"DEBUG: Logging file upload - User: {user_id}, File: {original_filename}, Size: {file_size}, Status: {status}, Case ID: {case_id}")
     if error_message:
         print(f"DEBUG: Error message: {error_message}")
     
     conn = get_db()
     cursor = conn.cursor()
     cursor.execute(
-        'INSERT INTO user_files (user_id, original_filename, file_size, status, error_message) VALUES (?, ?, ?, ?, ?)',
-        (user_id, original_filename, file_size, status, error_message)
+        'INSERT INTO user_files (user_id, case_id, original_filename, file_size, status, error_message) VALUES (?, ?, ?, ?, ?, ?)',
+        (user_id, case_id, original_filename, file_size, status, error_message)
     )
     conn.commit()
     file_id = cursor.lastrowid
@@ -340,7 +345,7 @@ def admin_data():
     files_total = conn.execute('SELECT COUNT(*) FROM user_files').fetchone()[0]
     # Get paginated file activities
     files = conn.execute('''
-        SELECT uf.id, uf.user_id, uf.original_filename, uf.enhanced_filename, 
+        SELECT uf.id, uf.user_id, uf.case_id, uf.original_filename, uf.enhanced_filename, 
                uf.upload_time, uf.enhancement_time, uf.file_size, uf.status, uf.error_message,
                u.email, u.username
         FROM user_files uf
@@ -399,7 +404,7 @@ def admin_panel():
     files_total = conn.execute('SELECT COUNT(*) FROM user_files').fetchone()[0]
     # Get paginated file activities
     files = conn.execute('''
-        SELECT uf.id, uf.user_id, uf.original_filename, uf.enhanced_filename, 
+        SELECT uf.id, uf.user_id, uf.case_id, uf.original_filename, uf.enhanced_filename, 
                uf.upload_time, uf.enhancement_time, uf.file_size, uf.status, uf.error_message,
                u.email, u.username
         FROM user_files uf
@@ -665,8 +670,11 @@ def enhance_image():
                 os.remove(temp_path)
             return jsonify({'error': error_msg}), 400
         
+        # Get case ID from form data (optional)
+        case_id = request.form.get('case_id', '').strip() or None
+        
         # Log file upload
-        file_id = log_file_activity(session['user_id'], filename, file_size, 'uploaded')
+        file_id = log_file_activity(session['user_id'], filename, file_size, 'uploaded', case_id=case_id)
         
         try:
             # --- Use the real enhancement function ---
@@ -779,7 +787,10 @@ def genai_enhance_image():
                 os.remove(temp_path)
             return jsonify({'error': error_msg}), 400
         
-        file_id = log_file_activity(session['user_id'], filename, file_size, 'uploaded')
+        # Get case ID from form data (optional)
+        case_id = request.form.get('case_id', '').strip() or None
+        
+        file_id = log_file_activity(session['user_id'], filename, file_size, 'uploaded', case_id=case_id)
         
         try:
             result_data = genai_enhance_image_api_method(temp_path)

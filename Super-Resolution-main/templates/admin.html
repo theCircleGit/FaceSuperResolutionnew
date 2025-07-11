@@ -346,7 +346,7 @@
                 <div class="card-body">
                     <!-- File Activity Filter Controls -->
                     <div class="row mb-3">
-                        <div class="col-md-3">
+                        <div class="col-md-2">
                             <label for="fileStatusFilter" class="form-label">File Status</label>
                             <select class="form-select form-select-sm" id="fileStatusFilter">
                                 <option value="">All Statuses</option>
@@ -355,9 +355,13 @@
                                 <option value="error">Error</option>
                             </select>
                         </div>
-                        <div class="col-md-3">
+                        <div class="col-md-2">
                             <label for="fileUserFilter" class="form-label">Search User</label>
                             <input type="text" class="form-control form-control-sm" id="fileUserFilter" placeholder="Search by email...">
+                        </div>
+                        <div class="col-md-2">
+                            <label for="fileCaseIdFilter" class="form-label">Case ID</label>
+                            <input type="text" class="form-control form-control-sm" id="fileCaseIdFilter" placeholder="Search by case ID...">
                         </div>
                         <div class="col-md-3">
                             <label for="fileDateFromFilter" class="form-label">From Date</label>
@@ -376,6 +380,7 @@
                                 <tr>
                                     <th>Upload Time</th>
                                     <th>User</th>
+                                    <th>Case ID</th>
                                     <th>Original File</th>
                                     <th>Enhanced File</th>
                                     <th>File Size</th>
@@ -388,9 +393,11 @@
                                 {% for file in files %}
                                 <tr data-status="{{ file.status }}" 
                                     data-email="{{ file.email }}"
-                                    data-upload-time="{{ file.upload_time }}">
+                                    data-upload-time="{{ file.upload_time }}"
+                                    data-case-id="{{ file.case_id if file.case_id else '' }}">
                                     <td>{{ file.upload_time }}</td>
                                     <td>{{ file.email }}</td>
+                                    <td>{{ file.case_id if file.case_id else '-' }}</td>
                                     <td>{{ file.original_filename }}</td>
                                     <td>{{ file.enhanced_filename if file.enhanced_filename else '-' }}</td>
                                     <td>
@@ -888,9 +895,11 @@
                 return `
                     <tr data-status="${file.status}" 
                         data-email="${file.email}"
-                        data-upload-time="${file.upload_time}">
+                        data-upload-time="${file.upload_time}"
+                        data-case-id="${file.case_id || ''}">
                         <td>${file.upload_time}</td>
                         <td>${file.email}</td>
+                        <td>${file.case_id || '-'}</td>
                         <td>${file.original_filename}</td>
                         <td>${file.enhanced_filename || '-'}</td>
                         <td>${fileSize}</td>
@@ -1236,6 +1245,7 @@
         function clearFileFilters() {
             document.getElementById('fileStatusFilter').value = '';
             document.getElementById('fileUserFilter').value = '';
+            document.getElementById('fileCaseIdFilter').value = ''; // Clear Case ID filter
             document.getElementById('fileDateFromFilter').value = '';
             document.getElementById('fileDateToFilter').value = '';
             filterFiles();
@@ -1245,6 +1255,7 @@
         function filterFiles() {
             const fileStatusFilter = document.getElementById('fileStatusFilter').value;
             const fileUserFilter = document.getElementById('fileUserFilter').value;
+            const fileCaseIdFilter = document.getElementById('fileCaseIdFilter').value; // Get Case ID filter
             const fileDateFromFilter = document.getElementById('fileDateFromFilter').value;
             const fileDateToFilter = document.getElementById('fileDateToFilter').value;
 
@@ -1258,12 +1269,14 @@
                 const status = row.getAttribute('data-status');
                 const email = row.getAttribute('data-email');
                 const uploadTime = row.getAttribute('data-upload-time');
+                const caseId = row.getAttribute('data-case-id'); // Get Case ID from data attribute
 
                 const statusMatch = fileStatusFilter === '' || status === fileStatusFilter;
                 const userMatch = fileUserFilter === '' || email.toLowerCase().includes(fileUserFilter.toLowerCase());
+                const caseIdMatch = fileCaseIdFilter === '' || caseId.toLowerCase().includes(fileCaseIdFilter.toLowerCase());
                 const dateMatch = (fileDateFromFilter === '' || uploadTime >= fileDateFromFilter) && (fileDateToFilter === '' || uploadTime <= fileDateToFilter);
 
-                const shouldShow = statusMatch && userMatch && dateMatch;
+                const shouldShow = statusMatch && userMatch && caseIdMatch && dateMatch;
                 row.style.display = shouldShow ? '' : 'none';
             });
         }
@@ -1271,6 +1284,7 @@
         // Event listeners for file filter inputs
         document.getElementById('fileStatusFilter').addEventListener('change', filterFiles);
         document.getElementById('fileUserFilter').addEventListener('input', filterFiles);
+        document.getElementById('fileCaseIdFilter').addEventListener('input', filterFiles); // Add event listener for Case ID filter
         document.getElementById('fileDateFromFilter').addEventListener('input', filterFiles);
         document.getElementById('fileDateToFilter').addEventListener('input', filterFiles);
 
@@ -1471,7 +1485,7 @@
             const el = document.getElementById(id);
             if (el) el.addEventListener('change', onActivityFilterChange);
         });
-        ['fileStatusFilter','fileUserFilter','fileDateFromFilter','fileDateToFilter'].forEach(id => {
+        ['fileStatusFilter','fileUserFilter','fileCaseIdFilter','fileDateFromFilter','fileDateToFilter'].forEach(id => {
             const el = document.getElementById(id);
             if (el) el.addEventListener('change', onFileFilterChange);
         });
