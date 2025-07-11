@@ -337,4 +337,121 @@ footer {
 
 ::-webkit-scrollbar-thumb:hover {
     background: linear-gradient(45deg, #5a6fd8, #6a4190);
+}
+
+/* Tab Navigation Styles */
+.nav-tabs {
+    border-bottom: 2px solid #dee2e6;
+}
+
+.nav-tabs .nav-link {
+    border: none;
+    border-radius: 10px 10px 0 0;
+    color: #6c757d;
+    font-weight: 500;
+    padding: 12px 20px;
+    transition: all 0.3s ease;
+}
+
+.nav-tabs .nav-link:hover {
+    border: none;
+    color: #667eea;
+    background-color: #f8f9fa;
+}
+
+.nav-tabs .nav-link.active {
+    border: none;
+    background: linear-gradient(45deg, #667eea, #764ba2);
+    color: white;
+    box-shadow: 0 2px 10px rgba(102, 126, 234, 0.3);
+}
+
+/* Accordion Styles */
+.accordion-item {
+    border: 1px solid #dee2e6;
+    border-radius: 10px;
+    margin-bottom: 10px;
+    overflow: hidden;
+    transition: all 0.3s ease;
+}
+
+.accordion-item:hover {
+    box-shadow: 0 4px 15px rgba(0, 0, 0, 0.1);
+}
+
+.accordion-button {
+    background: linear-gradient(45deg, #f8f9fa, #e9ecef);
+    border: none;
+    padding: 15px 20px;
+    font-weight: 500;
+    transition: all 0.3s ease;
+}
+
+.accordion-button:not(.collapsed) {
+    background: linear-gradient(45deg, #667eea, #764ba2);
+    color: white;
+    box-shadow: none;
+}
+
+.accordion-button:focus {
+    box-shadow: none;
+    border: none;
+}
+
+.accordion-button::after {
+    background-image: url("data:image/svg+xml,%3csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 16 16' fill='%23667eea'%3e%3cpath fill-rule='evenodd' d='M1.646 4.646a.5.5 0 0 1 .708 0L8 10.293l5.646-5.647a.5.5 0 0 1 .708.708l-6 6a.5.5 0 0 1-.708 0l-6-6a.5.5 0 0 1 0-.708z'/%3e%3c/svg%3e");
+    transition: all 0.3s ease;
+}
+
+.accordion-button:not(.collapsed)::after {
+    background-image: url("data:image/svg+xml,%3csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 16 16' fill='%23ffffff'%3e%3cpath fill-rule='evenodd' d='M1.646 4.646a.5.5 0 0 1 .708 0L8 10.293l5.646-5.647a.5.5 0 0 1 .708.708l-6 6a.5.5 0 0 1-.708 0l-6-6a.5.5 0 0 1 0-.708z'/%3e%3c/svg%3e");
+}
+
+.accordion-body {
+    background: #f8f9fa;
+    padding: 20px;
+}
+
+/* Case History Table Styles */
+.table-sm th {
+    font-weight: 600;
+    color: #495057;
+    border-bottom: 2px solid #dee2e6;
+}
+
+.table-sm td {
+    vertical-align: middle;
+    padding: 8px 12px;
+}
+
+.badge {
+    font-size: 0.75rem;
+    padding: 4px 8px;
+}
+
+/* Notification Styles */
+.alert {
+    border-radius: 10px;
+    border: none;
+    box-shadow: 0 4px 15px rgba(0, 0, 0, 0.1);
+}
+
+.alert-success {
+    background: linear-gradient(45deg, #28a745, #20c997);
+    color: white;
+}
+
+.alert-danger {
+    background: linear-gradient(45deg, #ff6b6b, #ee5a52);
+    color: white;
+}
+
+.alert-warning {
+    background: linear-gradient(45deg, #ffc107, #fd7e14);
+    color: white;
+}
+
+.alert-info {
+    background: linear-gradient(45deg, #17a2b8, #6f42c1);
+    color: white;
 } 

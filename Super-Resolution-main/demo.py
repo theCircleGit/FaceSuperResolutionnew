@@ -995,6 +995,84 @@ def get_monitoring_status():
     except Exception as e:
         return jsonify({'error': str(e)}), 500
 
+@app.route('/api/my-cases')
+def get_user_cases():
+    """Get all cases and enhancements for the logged-in user"""
+    if 'user_id' not in session:
+        return jsonify({'error': 'Unauthorized. Please log in.'}), 401
+    
+    try:
+        conn = get_db()
+        
+        # Get all files for the user, ordered by upload time
+        files = conn.execute('''
+            SELECT id, case_id, original_filename, enhanced_filename, 
+                   upload_time, enhancement_time, file_size, status, error_message
+            FROM user_files 
+            WHERE user_id = ? 
+            ORDER BY upload_time DESC
+        ''', (session['user_id'],)).fetchall()
+        
+        conn.close()
+        
+        # Group files by case_id
+        cases = {}
+        for file in files:
+            case_id = file['case_id'] if file['case_id'] else 'No Case ID'
+            
+            if case_id not in cases:
+                cases[case_id] = {
+                    'case_id': case_id,
+                    'total_files': 0,
+                    'enhanced_files': 0,
+                    'error_files': 0,
+                    'first_upload': file['upload_time'],
+                    'last_upload': file['upload_time'],
+                    'enhancements': []
+                }
+            
+            # Update case stats
+            cases[case_id]['total_files'] += 1
+            if file['status'] == 'enhanced':
+                cases[case_id]['enhanced_files'] += 1
+            elif file['status'] == 'error':
+                cases[case_id]['error_files'] += 1
+            
+            # Update timestamps
+            if file['upload_time'] < cases[case_id]['first_upload']:
+                cases[case_id]['first_upload'] = file['upload_time']
+            if file['upload_time'] > cases[case_id]['last_upload']:
+                cases[case_id]['last_upload'] = file['upload_time']
+            
+            # Add enhancement details
+            enhancement_type = 'GENAI' if 'genai_enhanced' in (file['enhanced_filename'] or '') else 'Normal'
+            
+            cases[case_id]['enhancements'].append({
+                'id': file['id'],
+                'original_filename': file['original_filename'],
+                'enhanced_filename': file['enhanced_filename'],
+                'upload_time': file['upload_time'],
+                'enhancement_time': file['enhancement_time'],
+                'file_size': file['file_size'],
+                'status': file['status'],
+                'error_message': file['error_message'],
+                'enhancement_type': enhancement_type,
+                'can_download_report': file['status'] == 'enhanced' and file['enhanced_filename'] is not None
+            })
+        
+        # Convert to list and sort by last upload time
+        cases_list = list(cases.values())
+        cases_list.sort(key=lambda x: x['last_upload'], reverse=True)
+        
+        return jsonify({
+            'success': True,
+            'cases': cases_list
+        })
+        
+    except Exception as e:
+        print(f"Error fetching user cases: {str(e)}")
+        return jsonify({'error': 'Failed to fetch case history'}), 500
+
 if __name__ == '__main__':
     print("🎭 Starting Super Resolution Web Application in DEMO MODE...")
     print("📝 This is a demo version that creates mock enhanced images with user login/signup and email verification")

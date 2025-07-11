@@ -26,145 +26,193 @@
                     {% endif %}
                     <a href="{{ url_for('logout') }}" class="btn btn-outline-danger">Sign Out</a>
                 </div>
-                <!-- Upload Section -->
-                <div class="card shadow-sm mb-4">
-                    <div class="card-body">
-                        <h5 class="card-title">
-                            <i class="fas fa-upload"></i> Upload Image
-                        </h5>
-                        <div class="row mb-3">
-                            <div class="col-md-6">
-                                <label for="caseIdInput" class="form-label">
-                                    <i class="fas fa-folder"></i> Case ID (Optional)
-                                </label>
-                                <input type="text" class="form-control" id="caseIdInput" 
-                                       placeholder="Enter case ID for tracking" 
-                                       maxlength="50">
-                                <div class="form-text">Enter a case ID to help track and organize your image enhancements</div>
-                            </div>
-                        </div>
-                        <div class="upload-area" id="uploadArea">
-                            <div class="upload-content">
-                                <i class="fas fa-cloud-upload-alt fa-3x text-muted mb-3"></i>
-                                <p class="mb-2">Drag and drop your image here or click to browse</p>
-                                <p class="text-muted small">Supports: JPG, PNG, GIF, BMP (Max: 16MB)</p>
-                                <input type="file" id="imageInput" accept="image/*" class="d-none">
-                                <button class="btn btn-primary" id="chooseFileBtn" type="button">
-                                    <i class="fas fa-folder-open"></i> Choose File
-                                </button>
-                            </div>
-                        </div>
-                    </div>
-                </div>
 
-                <!-- Enhance Button -->
-                <div class="card shadow-sm mb-4 d-none" id="enhanceCard">
-                    <div class="card-body text-center">
-                        <h5 class="card-title">
-                            <i class="fas fa-magic"></i> Ready to Enhance
-                        </h5>
-                        <p class="text-muted mb-3">Your image is ready for AI enhancement</p>
-                        <button class="btn btn-success btn-lg" id="enhanceBtn" onclick="app.enhanceImage()">
-                            <i class="fas fa-magic"></i> Enhance Image
+                <!-- Navigation Tabs -->
+                <ul class="nav nav-tabs mb-4" id="mainTabs" role="tablist">
+                    <li class="nav-item" role="presentation">
+                        <button class="nav-link active" id="upload-tab" data-bs-toggle="tab" data-bs-target="#upload-content" type="button" role="tab">
+                            <i class="fas fa-upload"></i> Upload & Enhance
                         </button>
-                        <button class="btn btn-info btn-lg ms-2" id="genaiEnhanceBtn">
-                            <i class="fas fa-robot"></i> Enhance with GENAI
+                    </li>
+                    <li class="nav-item" role="presentation">
+                        <button class="nav-link" id="cases-tab" data-bs-toggle="tab" data-bs-target="#cases-content" type="button" role="tab">
+                            <i class="fas fa-folder"></i> Case History
                         </button>
-                    </div>
-                </div>
+                    </li>
+                </ul>
 
-                <!-- Processing Status -->
-                <div class="card shadow-sm mb-4 d-none" id="processingCard">
-                    <div class="card-body text-center">
-                        <div class="spinner-border text-primary mb-3" role="status">
-                            <span class="visually-hidden">Loading...</span>
-                        </div>
-                        <h5>Processing your image...</h5>
-                        <p class="text-muted">This may take a few moments depending on the image size</p>
-                    </div>
-                </div>
-
-                <!-- Results Section -->
-                <div class="card shadow-sm d-none" id="resultsCard">
-                    <div class="card-header">
-                        <h5 class="mb-0">
-                            <i class="fas fa-images"></i> Enhanced Results
-                        </h5>
-                    </div>
-                    <div class="card-body">
-                        <div class="row mb-4">
-                            <div class="col-12">
-                                <div class="result-item text-center">
-                                    <h6 class="text-muted mb-3">Original Image</h6>
-                                    <img id="originalImage" class="result-image" src="" alt="Original Image">
+                <!-- Tab Content -->
+                <div class="tab-content" id="mainTabContent">
+                    <!-- Upload & Enhance Tab -->
+                    <div class="tab-pane fade show active" id="upload-content" role="tabpanel">
+                        <!-- Upload Section -->
+                        <div class="card shadow-sm mb-4">
+                            <div class="card-body">
+                                <h5 class="card-title">
+                                    <i class="fas fa-upload"></i> Upload Image
+                                </h5>
+                                <div class="row mb-3">
+                                    <div class="col-md-6">
+                                        <label for="caseIdInput" class="form-label">
+                                            <i class="fas fa-folder"></i> Case ID (Optional)
+                                        </label>
+                                        <input type="text" class="form-control" id="caseIdInput" 
+                                               placeholder="Enter case ID for tracking" 
+                                               maxlength="50">
+                                        <div class="form-text">Enter a case ID to help track and organize your image enhancements</div>
+                                    </div>
                                 </div>
-                            </div>
-                        </div>
-                        <div class="row">
-                            <div class="col-12 mb-3">
-                                <h6 class="text-center text-muted">Enhanced Images (Different Fidelity Levels)</h6>
-                            </div>
-                        </div>
-                        <div class="row">
-                            <div class="col-md-4 col-sm-6 mb-3">
-                                <div class="result-item text-center">
-                                    <h6 class="text-muted mb-2">Maximum Enhancement</h6>
-                                    <small class="text-muted d-block mb-2">Fidelity: 0.0</small>
-                                    <img id="enhancedImage0" class="result-image-small" src="" alt="Enhanced Image 0">
-                                </div>
-                            </div>
-                            <div class="col-md-4 col-sm-6 mb-3">
-                                <div class="result-item text-center">
-                                    <h6 class="text-muted mb-2">High Enhancement</h6>
-                                    <small class="text-muted d-block mb-2">Fidelity: 0.2</small>
-                                    <img id="enhancedImage2" class="result-image-small" src="" alt="Enhanced Image 2">
-                                </div>
-                            </div>
-                            <div class="col-md-4 col-sm-6 mb-3">
-                                <div class="result-item text-center">
-                                    <h6 class="text-muted mb-2">Balanced Enhancement</h6>
-                                    <small class="text-muted d-block mb-2">Fidelity: 0.5</small>
-                                    <img id="enhancedImage3" class="result-image-small" src="" alt="Enhanced Image 3">
-                                    <div class="mt-2">
-                                        <span class="badge bg-primary">Recommended</span>
+                                <div class="upload-area" id="uploadArea">
+                                    <div class="upload-content">
+                                        <i class="fas fa-cloud-upload-alt fa-3x text-muted mb-3"></i>
+                                        <p class="mb-2">Drag and drop your image here or click to browse</p>
+                                        <p class="text-muted small">Supports: JPG, PNG, GIF, BMP (Max: 16MB)</p>
+                                        <input type="file" id="imageInput" accept="image/*" class="d-none">
+                                        <button class="btn btn-primary" id="chooseFileBtn" type="button">
+                                            <i class="fas fa-folder-open"></i> Choose File
+                                        </button>
                                     </div>
                                 </div>
                             </div>
-                            <div class="col-md-4 col-sm-6 mb-3">
-                                <div class="result-item text-center">
-                                    <h6 class="text-muted mb-2">Conservative Enhancement</h6>
-                                    <small class="text-muted d-block mb-2">Fidelity: 0.7</small>
-                                    <img id="enhancedImage1" class="result-image-small" src="" alt="Enhanced Image 1">
-                                </div>
+                        </div>
+
+                        <!-- Enhance Button -->
+                        <div class="card shadow-sm mb-4 d-none" id="enhanceCard">
+                            <div class="card-body text-center">
+                                <h5 class="card-title">
+                                    <i class="fas fa-magic"></i> Ready to Enhance
+                                </h5>
+                                <p class="text-muted mb-3">Your image is ready for AI enhancement</p>
+                                <button class="btn btn-success btn-lg" id="enhanceBtn" onclick="app.enhanceImage()">
+                                    <i class="fas fa-magic"></i> Enhance Image
+                                </button>
+                                <button class="btn btn-info btn-lg ms-2" id="genaiEnhanceBtn">
+                                    <i class="fas fa-robot"></i> Enhance with GENAI
+                                </button>
                             </div>
-                            <div class="col-md-4 col-sm-6 mb-3">
-                                <div class="result-item text-center">
-                                    <h6 class="text-muted mb-2">Minimal Enhancement</h6>
-                                    <small class="text-muted d-block mb-2">Fidelity: 1.0</small>
-                                    <img id="enhancedImage4" class="result-image-small" src="" alt="Enhanced Image 4">
+                        </div>
+
+                        <!-- Processing Status -->
+                        <div class="card shadow-sm mb-4 d-none" id="processingCard">
+                            <div class="card-body text-center">
+                                <div class="spinner-border text-primary mb-3" role="status">
+                                    <span class="visually-hidden">Loading...</span>
+                                </div>
+                                <h5>Processing your image...</h5>
+                                <p class="text-muted">This may take a few moments depending on the image size</p>
+                            </div>
+                        </div>
+
+                        <!-- Results Section -->
+                        <div class="card shadow-sm d-none" id="resultsCard">
+                            <div class="card-header">
+                                <h5 class="mb-0">
+                                    <i class="fas fa-images"></i> Enhanced Results
+                                </h5>
+                            </div>
+                            <div class="card-body">
+                                <div class="row mb-4">
+                                    <div class="col-12">
+                                        <div class="result-item text-center">
+                                            <h6 class="text-muted mb-3">Original Image</h6>
+                                            <img id="originalImage" class="result-image" src="" alt="Original Image">
+                                        </div>
+                                    </div>
+                                </div>
+                                <div class="row">
+                                    <div class="col-12 mb-3">
+                                        <h6 class="text-center text-muted">Enhanced Images (Different Fidelity Levels)</h6>
+                                    </div>
+                                </div>
+                                <div class="row">
+                                    <div class="col-md-4 col-sm-6 mb-3">
+                                        <div class="result-item text-center">
+                                            <h6 class="text-muted mb-2">Maximum Enhancement</h6>
+                                            <small class="text-muted d-block mb-2">Fidelity: 0.0</small>
+                                            <img id="enhancedImage0" class="result-image-small" src="" alt="Enhanced Image 0">
+                                        </div>
+                                    </div>
+                                    <div class="col-md-4 col-sm-6 mb-3">
+                                        <div class="result-item text-center">
+                                            <h6 class="text-muted mb-2">High Enhancement</h6>
+                                            <small class="text-muted d-block mb-2">Fidelity: 0.2</small>
+                                            <img id="enhancedImage2" class="result-image-small" src="" alt="Enhanced Image 2">
+                                        </div>
+                                    </div>
+                                    <div class="col-md-4 col-sm-6 mb-3">
+                                        <div class="result-item text-center">
+                                            <h6 class="text-muted mb-2">Balanced Enhancement</h6>
+                                            <small class="text-muted d-block mb-2">Fidelity: 0.5</small>
+                                            <img id="enhancedImage3" class="result-image-small" src="" alt="Enhanced Image 3">
+                                            <div class="mt-2">
+                                                <span class="badge bg-primary">Recommended</span>
+                                            </div>
+                                        </div>
+                                    </div>
+                                    <div class="col-md-4 col-sm-6 mb-3">
+                                        <div class="result-item text-center">
+                                            <h6 class="text-muted mb-2">Conservative Enhancement</h6>
+                                            <small class="text-muted d-block mb-2">Fidelity: 0.7</small>
+                                            <img id="enhancedImage1" class="result-image-small" src="" alt="Enhanced Image 1">
+                                        </div>
+                                    </div>
+                                    <div class="col-md-4 col-sm-6 mb-3">
+                                        <div class="result-item text-center">
+                                            <h6 class="text-muted mb-2">Minimal Enhancement</h6>
+                                            <small class="text-muted d-block mb-2">Fidelity: 1.0</small>
+                                            <img id="enhancedImage4" class="result-image-small" src="" alt="Enhanced Image 4">
+                                        </div>
+                                    </div>
+                                </div>
+                                <div class="row mt-4">
+                                    <div class="col-12 text-center">
+                                        <button class="btn btn-primary me-2" onclick="app.downloadAllEnhanced()">
+                                            <i class="fas fa-download"></i> Download All Enhanced
+                                        </button>
+                                        <button class="btn btn-success me-2" onclick="app.generateReport()">
+                                            <i class="fas fa-file-pdf"></i> Generate Report
+                                        </button>
+                                        <button class="btn btn-outline-primary" onclick="app.uploadNewImage()">
+                                            <i class="fas fa-upload"></i> Upload New Image
+                                        </button>
+                                    </div>
                                 </div>
                             </div>
                         </div>
-                        <div class="row mt-4">
-                            <div class="col-12 text-center">
-                                <button class="btn btn-primary me-2" onclick="app.downloadAllEnhanced()">
-                                    <i class="fas fa-download"></i> Download All Enhanced
-                                </button>
-                                <button class="btn btn-success me-2" onclick="app.generateReport()">
-                                    <i class="fas fa-file-pdf"></i> Generate Report
-                                </button>
-                                <button class="btn btn-outline-primary" onclick="app.uploadNewImage()">
-                                    <i class="fas fa-upload"></i> Upload New Image
-                                </button>
+
+                        <!-- Error Section -->
+                        <div class="alert alert-danger d-none" id="errorAlert" role="alert">
+                            <i class="fas fa-exclamation-triangle"></i>
+                            <span id="errorMessage"></span>
+                        </div>
+                    </div>
+
+                    <!-- Case History Tab -->
+                    <div class="tab-pane fade" id="cases-content" role="tabpanel">
+                        <div class="card shadow-sm">
+                            <div class="card-header">
+                                <h5 class="mb-0">
+                                    <i class="fas fa-folder"></i> My Case History
+                                </h5>
+                            </div>
+                            <div class="card-body">
+                                <div id="casesLoading" class="text-center py-4">
+                                    <div class="spinner-border text-primary" role="status">
+                                        <span class="visually-hidden">Loading...</span>
+                                    </div>
+                                    <p class="mt-2">Loading your case history...</p>
+                                </div>
+                                <div id="casesContent" class="d-none">
+                                    <div id="casesList"></div>
+                                </div>
+                                <div id="noCasesMessage" class="text-center py-4 d-none">
+                                    <i class="fas fa-folder-open fa-3x text-muted mb-3"></i>
+                                    <h5 class="text-muted">No cases found</h5>
+                                    <p class="text-muted">Upload your first image with a case ID to see it here.</p>
+                                </div>
                             </div>
                         </div>
                     </div>
-                </div>
-
-                <!-- Error Section -->
-                <div class="alert alert-danger d-none" id="errorAlert" role="alert">
-                    <i class="fas fa-exclamation-triangle"></i>
-                    <span id="errorMessage"></span>
                 </div>
             </div>
         </div>

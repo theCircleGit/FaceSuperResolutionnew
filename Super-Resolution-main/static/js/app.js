@@ -61,6 +61,12 @@ class SuperResolutionApp {
         if (genaiBtn) {
             genaiBtn.addEventListener('click', () => this.enhanceWithGenai());
         }
+
+        // Add event listener for Case History tab
+        const casesTab = document.getElementById('cases-tab');
+        if (casesTab) {
+            casesTab.addEventListener('click', () => this.loadCaseHistory());
+        }
     }
 
     handleFileUpload(file) {
@@ -507,6 +513,241 @@ class SuperResolutionApp {
             console.error('Error:', error);
             this.showError('Error generating report');
         }
+    }
+
+    // Case History Methods
+    async loadCaseHistory() {
+        try {
+            const response = await fetch('/api/my-cases');
+            const data = await response.json();
+            
+            if (response.ok && data.success) {
+                this.displayCaseHistory(data.cases);
+            } else {
+                this.showCaseHistoryError(data.error || 'Failed to load case history');
+            }
+        } catch (error) {
+            console.error('Error loading case history:', error);
+            this.showCaseHistoryError('Network error. Please check your connection.');
+        }
+    }
+
+    displayCaseHistory(cases) {
+        const casesList = document.getElementById('casesList');
+        const casesContent = document.getElementById('casesContent');
+        const casesLoading = document.getElementById('casesLoading');
+        const noCasesMessage = document.getElementById('noCasesMessage');
+
+        // Hide loading
+        casesLoading.classList.add('d-none');
+
+        if (!cases || cases.length === 0) {
+            noCasesMessage.classList.remove('d-none');
+            return;
+        }
+
+        // Show content
+        casesContent.classList.remove('d-none');
+        noCasesMessage.classList.add('d-none');
+
+        // Generate accordion HTML
+        const accordionId = 'casesAccordion';
+        let accordionHTML = `<div class="accordion" id="${accordionId}">`;
+        
+        cases.forEach((caseData, index) => {
+            const caseId = caseData.case_id;
+            const accordionItemId = `case-${index}`;
+            const isExpanded = index === 0; // First case expanded by default
+            
+            accordionHTML += `
+                <div class="accordion-item">
+                    <h2 class="accordion-header" id="heading-${accordionItemId}">
+                        <button class="accordion-button ${isExpanded ? '' : 'collapsed'}" type="button" 
+                                data-bs-toggle="collapse" data-bs-target="#collapse-${accordionItemId}" 
+                                aria-expanded="${isExpanded}" aria-controls="collapse-${accordionItemId}">
+                            <div class="d-flex justify-content-between align-items-center w-100 me-3">
+                                <div>
+                                    <strong>Case ID:</strong> ${caseId}
+                                </div>
+                                <div class="text-muted small">
+                                    <span class="badge bg-primary me-2">${caseData.total_files} files</span>
+                                    <span class="badge bg-success me-2">${caseData.enhanced_files} enhanced</span>
+                                    ${caseData.error_files > 0 ? `<span class="badge bg-danger">${caseData.error_files} errors</span>` : ''}
+                                </div>
+                            </div>
+                        </button>
+                    </h2>
+                    <div id="collapse-${accordionItemId}" class="accordion-collapse collapse ${isExpanded ? 'show' : ''}" 
+                         aria-labelledby="heading-${accordionItemId}" data-bs-parent="#${accordionId}">
+                        <div class="accordion-body">
+                            <div class="row mb-3">
+                                <div class="col-md-6">
+                                    <small class="text-muted">
+                                        <strong>First Upload:</strong> ${caseData.first_upload}
+                                    </small>
+                                </div>
+                                <div class="col-md-6">
+                                    <small class="text-muted">
+                                        <strong>Last Upload:</strong> ${caseData.last_upload}
+                                    </small>
+                                </div>
+                            </div>
+                            <div class="table-responsive">
+                                <table class="table table-sm">
+                                    <thead class="table-light">
+                                        <tr>
+                                            <th>Type</th>
+                                            <th>Original File</th>
+                                            <th>Status</th>
+                                            <th>Upload Time</th>
+                                            <th>Enhancement Time</th>
+                                            <th>Actions</th>
+                                        </tr>
+                                    </thead>
+                                    <tbody>
+                                        ${caseData.enhancements.map(enhancement => `
+                                            <tr>
+                                                <td>
+                                                    <span class="badge ${enhancement.enhancement_type === 'GENAI' ? 'bg-info' : 'bg-primary'}">
+                                                        ${enhancement.enhancement_type}
+                                                    </span>
+                                                </td>
+                                                <td>
+                                                    <small>${enhancement.original_filename}</small>
+                                                    <br>
+                                                    <small class="text-muted">${this.formatFileSize(enhancement.file_size)}</small>
+                                                </td>
+                                                <td>
+                                                    ${enhancement.status === 'enhanced' ? 
+                                                        '<span class="badge bg-success"><i class="fas fa-check"></i> Enhanced</span>' :
+                                                        enhancement.status === 'error' ?
+                                                        '<span class="badge bg-danger"><i class="fas fa-exclamation-triangle"></i> Error</span>' :
+                                                        '<span class="badge bg-warning"><i class="fas fa-clock"></i> Uploaded</span>'
+                                                    }
+                                                </td>
+                                                <td><small>${enhancement.upload_time}</small></td>
+                                                <td><small>${enhancement.enhancement_time || '-'}</small></td>
+                                                <td>
+                                                    ${enhancement.can_download_report ? 
+                                                        `<button class="btn btn-sm btn-outline-primary" onclick="app.downloadCaseReport('${caseId}', '${enhancement.enhancement_type}', '${enhancement.original_filename}')">
+                                                            <i class="fas fa-file-pdf"></i> Download Report
+                                                        </button>` :
+                                                        enhancement.status === 'error' ?
+                                                        `<small class="text-danger">${enhancement.error_message}</small>` :
+                                                        '<small class="text-muted">Processing...</small>'
+                                                    }
+                                                </td>
+                                            </tr>
+                                        `).join('')}
+                                    </tbody>
+                                </table>
+                            </div>
+                        </div>
+                    </div>
+                </div>
+            `;
+        });
+        
+        accordionHTML += '</div>';
+        casesList.innerHTML = accordionHTML;
+    }
+
+    showCaseHistoryError(message) {
+        const casesLoading = document.getElementById('casesLoading');
+        const casesContent = document.getElementById('casesContent');
+        const noCasesMessage = document.getElementById('noCasesMessage');
+        
+        casesLoading.classList.add('d-none');
+        casesContent.classList.add('d-none');
+        noCasesMessage.classList.remove('d-none');
+        
+        noCasesMessage.innerHTML = `
+            <i class="fas fa-exclamation-triangle fa-3x text-danger mb-3"></i>
+            <h5 class="text-danger">Error Loading Case History</h5>
+            <p class="text-muted">${message}</p>
+            <button class="btn btn-primary" onclick="app.loadCaseHistory()">
+                <i class="fas fa-refresh"></i> Try Again
+            </button>
+        `;
+    }
+
+    formatFileSize(bytes) {
+        if (!bytes) return '-';
+        if (bytes < 1024) return `${bytes} B`;
+        if (bytes < 1048576) return `${(bytes / 1024).toFixed(1)} KB`;
+        return `${(bytes / 1048576).toFixed(1)} MB`;
+    }
+
+    async downloadCaseReport(caseId, enhancementType, originalFilename) {
+        try {
+            // Show loading state
+            const btn = event.target.closest('button');
+            const originalText = btn.innerHTML;
+            btn.innerHTML = '<i class="fas fa-spinner fa-spin"></i> Generating...';
+            btn.disabled = true;
+
+            // For now, we'll generate a simple report
+            // In a real implementation, you'd need to store the file paths in the database
+            // and retrieve them here for the specific enhancement
+            
+            const reportData = {
+                original_image_path: `uploads/original_${originalFilename}`,
+                processed_images_paths: [`uploads/${enhancementType.toLowerCase()}_enhanced_${originalFilename}`],
+                filename: `${caseId}_${enhancementType}_${originalFilename}`
+            };
+
+            const response = await fetch('/api/generate-report', {
+                method: 'POST',
+                headers: {
+                    'Content-Type': 'application/json',
+                },
+                body: JSON.stringify(reportData)
+            });
+
+            if (response.ok) {
+                const blob = await response.blob();
+                const url = window.URL.createObjectURL(blob);
+                const link = document.createElement('a');
+                link.href = url;
+                link.download = `case_${caseId}_${enhancementType}_report.pdf`;
+                document.body.appendChild(link);
+                link.click();
+                document.body.removeChild(link);
+                window.URL.revokeObjectURL(url);
+                
+                this.showNotification('Report downloaded successfully!', 'success');
+            } else {
+                const data = await response.json();
+                throw new Error(data.error || 'Failed to generate report');
+            }
+        } catch (error) {
+            console.error('Error downloading case report:', error);
+            this.showNotification(error.message || 'Failed to download report', 'danger');
+        } finally {
+            // Restore button state
+            const btn = event.target.closest('button');
+            btn.innerHTML = '<i class="fas fa-file-pdf"></i> Download Report';
+            btn.disabled = false;
+        }
+    }
+
+    showNotification(message, type = 'success') {
+        // Create a simple notification
+        const notification = document.createElement('div');
+        notification.className = `alert alert-${type} alert-dismissible fade show position-fixed`;
+        notification.style.cssText = 'top: 20px; right: 20px; z-index: 9999; min-width: 300px;';
+        notification.innerHTML = `
+            ${message}
+            <button type="button" class="btn-close" data-bs-dismiss="alert"></button>
+        `;
+        document.body.appendChild(notification);
+        
+        // Auto-remove after 5 seconds
+        setTimeout(() => {
+            if (notification.parentNode) {
+                notification.remove();
+            }
+        }, 5000);
     }
 }
 
