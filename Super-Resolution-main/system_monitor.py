@@ -74,7 +74,11 @@ class SystemMonitor:
             
             for i in range(device_count):
                 handle = pynvml.nvmlDeviceGetHandleByIndex(i)
-                name = pynvml.nvmlDeviceGetName(handle).decode('utf-8')
+                name = pynvml.nvmlDeviceGetName(handle)
+                # Handle both string and bytes types
+                if isinstance(name, bytes):
+                    name = name.decode('utf-8')
+                
                 memory_info = pynvml.nvmlDeviceGetMemoryInfo(handle)
                 utilization = pynvml.nvmlDeviceGetUtilizationRates(handle)
                 temperature = pynvml.nvmlDeviceGetTemperature(handle, pynvml.NVML_TEMPERATURE_GPU)
@@ -91,11 +95,50 @@ class SystemMonitor:
         except ImportError:
             gpu_info['nvidia_gpus'] = None
             gpu_info['error'] = 'nvidia-ml-py not installed'
+            gpu_info['message'] = 'Install with: pip install nvidia-ml-py'
         except Exception as e:
             gpu_info['nvidia_gpus'] = None
             gpu_info['error'] = str(e)
+            gpu_info['message'] = 'NVIDIA GPU monitoring failed'
+        
+        # Try alternative GPU detection methods
+        if not gpu_info.get('nvidia_gpus'):
+            gpu_info.update(self.get_alternative_gpu_info())
         
         return gpu_info
+    
+    def get_alternative_gpu_info(self):
+        """Get GPU information using alternative methods"""
+        alt_gpu_info = {}
+        
+        try:
+            # Try using lspci to detect GPUs
+            import subprocess
+            result = subprocess.run(['lspci'], capture_output=True, text=True, timeout=5)
+            if result.returncode == 0:
+                gpu_lines = [line for line in result.stdout.split('\n') if 'VGA' in line or '3D' in line]
+                if gpu_lines:
+                    alt_gpu_info['detected_gpus'] = gpu_lines
+                    alt_gpu_info['message'] = f'Found {len(gpu_lines)} GPU(s) via lspci'
+                else:
+                    alt_gpu_info['message'] = 'No GPUs detected via lspci'
+            else:
+                alt_gpu_info['message'] = 'lspci not available'
+        except Exception:
+            alt_gpu_info['message'] = 'Alternative GPU detection failed'
+        
+        # Try using /proc/driver/nvidia/gpus if available
+        try:
+            import os
+            if os.path.exists('/proc/driver/nvidia/gpus'):
+                gpu_dirs = [d for d in os.listdir('/proc/driver/nvidia/gpus') if d.isdigit()]
+                if gpu_dirs:
+                    alt_gpu_info['nvidia_driver'] = True
+                    alt_gpu_info['message'] = f'NVIDIA driver detected with {len(gpu_dirs)} GPU(s)'
+        except Exception:
+            pass
+        
+        return alt_gpu_info
     
     def start_monitoring(self, interval=5):
         """Start continuous monitoring"""

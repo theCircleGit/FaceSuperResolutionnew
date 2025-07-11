@@ -82,7 +82,8 @@ def init_db():
         event_type TEXT,
         timestamp TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
         session_id TEXT,
-        ip_address TEXT
+        ip_address TEXT,
+        additional_data TEXT
     )''')
     # Add user_files table
     conn.execute('''CREATE TABLE IF NOT EXISTS user_files (
@@ -93,7 +94,8 @@ def init_db():
         upload_time TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
         enhancement_time TIMESTAMP,
         file_size INTEGER,
-        status TEXT DEFAULT 'uploaded'
+        status TEXT DEFAULT 'uploaded',
+        error_message TEXT DEFAULT NULL
     )''')
     # Try to add columns if upgrading from old schema
     try:
@@ -110,6 +112,14 @@ def init_db():
         pass
     try:
         conn.execute('ALTER TABLE users ADD COLUMN mobile TEXT DEFAULT ""')
+    except Exception:
+        pass
+    try:
+        conn.execute('ALTER TABLE user_activity ADD COLUMN additional_data TEXT')
+    except Exception:
+        pass
+    try:
+        conn.execute('ALTER TABLE user_files ADD COLUMN error_message TEXT DEFAULT NULL')
     except Exception:
         pass
     # Update existing users to be approved if they don't have the is_approved field set
@@ -131,25 +141,28 @@ def init_db():
 
 init_db()  # Ensure tables are created on every start
 
-def log_user_activity(user_id, event_type, session_id=None, ip_address=None):
-    print(f"DEBUG: Logging activity - User: {user_id}, Event: {event_type}, Session: {session_id}, IP: {ip_address}")
+def log_user_activity(user_id, event_type, session_id=None, ip_address=None, additional_data=None):
+    print(f"DEBUG: Logging activity - User: {user_id}, Event: {event_type}, Session: {session_id}, IP: {ip_address}, Additional: {additional_data}")
     conn = get_db()
     conn.execute(
-        'INSERT INTO user_activity (user_id, event_type, session_id, ip_address) VALUES (?, ?, ?, ?)',
-        (user_id, event_type, session_id, ip_address)
+        'INSERT INTO user_activity (user_id, event_type, session_id, ip_address, additional_data) VALUES (?, ?, ?, ?, ?)',
+        (user_id, event_type, session_id, ip_address, additional_data)
     )
     conn.commit()
     conn.close()
     print(f"DEBUG: Activity logged successfully")
 
-def log_file_activity(user_id, original_filename, file_size, status='uploaded'):
-    """Log file upload"""
-    print(f"DEBUG: Logging file upload - User: {user_id}, File: {original_filename}, Size: {file_size}")
+def log_file_activity(user_id, original_filename, file_size, status='uploaded', error_message=None):
+    """Log file upload with optional error message"""
+    print(f"DEBUG: Logging file upload - User: {user_id}, File: {original_filename}, Size: {file_size}, Status: {status}")
+    if error_message:
+        print(f"DEBUG: Error message: {error_message}")
+    
     conn = get_db()
     cursor = conn.cursor()
     cursor.execute(
-        'INSERT INTO user_files (user_id, original_filename, file_size, status) VALUES (?, ?, ?, ?)',
-        (user_id, original_filename, file_size, status)
+        'INSERT INTO user_files (user_id, original_filename, file_size, status, error_message) VALUES (?, ?, ?, ?, ?)',
+        (user_id, original_filename, file_size, status, error_message)
     )
     conn.commit()
     file_id = cursor.lastrowid
@@ -157,13 +170,16 @@ def log_file_activity(user_id, original_filename, file_size, status='uploaded'):
     print(f"DEBUG: File upload logged with ID: {file_id}")
     return file_id
 
-def update_file_enhancement(file_id, enhanced_filename, status='enhanced'):
-    """Update file record when enhancement is complete"""
-    print(f"DEBUG: Updating file enhancement - File ID: {file_id}, Enhanced: {enhanced_filename}")
+def update_file_enhancement(file_id, enhanced_filename, status='enhanced', error_message=None):
+    """Update file record when enhancement is complete or fails"""
+    print(f"DEBUG: Updating file enhancement - File ID: {file_id}, Enhanced: {enhanced_filename}, Status: {status}")
+    if error_message:
+        print(f"DEBUG: Error message: {error_message}")
+    
     conn = get_db()
     conn.execute(
-        'UPDATE user_files SET enhanced_filename = ?, enhancement_time = CURRENT_TIMESTAMP, status = ? WHERE id = ?',
-        (enhanced_filename, status, file_id)
+        'UPDATE user_files SET enhanced_filename = ?, enhancement_time = CURRENT_TIMESTAMP, status = ?, error_message = ? WHERE id = ?',
+        (enhanced_filename, status, error_message, file_id)
     )
     conn.commit()
     conn.close()
@@ -206,6 +222,12 @@ def signup():
                 VALUES (?, ?, ?, ?, 1, 0, 0, ?, ?, ?)''',
                 (name, email, generate_password_hash(password), email, department, branch_location, mobile))
             conn.commit()
+            
+            # Get the user ID for logging
+            user = conn.execute('SELECT id FROM users WHERE email = ?', (email,)).fetchone()
+            if user:
+                log_user_activity(user['id'], 'signup', ip_address=request.remote_addr)
+            
         except sqlite3.IntegrityError as e:
             conn.close()
             if 'email' in str(e):
@@ -255,6 +277,10 @@ def forgot_password():
                            SET password_reset_requested = 1, password_reset_date = CURRENT_TIMESTAMP 
                            WHERE email = ?''', (email,))
             conn.commit()
+            
+            # Log password reset request
+            log_user_activity(user['id'], 'password_reset_requested', ip_address=request.remote_addr)
+            
             conn.close()
             return render_template('forgot_password.html', 
                                  message='Password reset request submitted. An admin will review and set a new password for you.')
@@ -279,9 +305,14 @@ def logout():
 
 @app.route('/admin/data')
 def admin_data():
-    """Return JSON data for admin panel auto-refresh"""
+    """Return JSON data for admin panel auto-refresh with pagination support"""
     if 'user_id' not in session or not session.get('is_admin'):
         return jsonify({'error': 'Unauthorized'}), 401
+    
+    # Get pagination params
+    activity_page = int(request.args.get('activity_page', 1))
+    file_page = int(request.args.get('file_page', 1))
+    per_page = int(request.args.get('per_page', 50))
     
     conn = get_db()
     
@@ -293,26 +324,30 @@ def admin_data():
         ORDER BY created_at DESC
     ''').fetchall()
     
-    # Get recent user activity
+    # Get total activity count
+    activities_total = conn.execute('SELECT COUNT(*) FROM user_activity').fetchone()[0]
+    # Get paginated user activity
     activities = conn.execute('''
-        SELECT ua.id, ua.user_id, ua.event_type, ua.timestamp, ua.session_id, ua.ip_address,
+        SELECT ua.id, ua.user_id, ua.event_type, ua.timestamp, ua.session_id, ua.ip_address, ua.additional_data,
                u.email, u.username
         FROM user_activity ua
         JOIN users u ON ua.user_id = u.id
         ORDER BY ua.timestamp DESC
-        LIMIT 50
-    ''').fetchall()
+        LIMIT ? OFFSET ?
+    ''', (per_page, (activity_page-1)*per_page)).fetchall()
     
-    # Get recent file activities
+    # Get total file activity count
+    files_total = conn.execute('SELECT COUNT(*) FROM user_files').fetchone()[0]
+    # Get paginated file activities
     files = conn.execute('''
         SELECT uf.id, uf.user_id, uf.original_filename, uf.enhanced_filename, 
-               uf.upload_time, uf.enhancement_time, uf.file_size, uf.status,
+               uf.upload_time, uf.enhancement_time, uf.file_size, uf.status, uf.error_message,
                u.email, u.username
         FROM user_files uf
         JOIN users u ON uf.user_id = u.id
         ORDER BY uf.upload_time DESC
-        LIMIT 50
-    ''').fetchall()
+        LIMIT ? OFFSET ?
+    ''', (per_page, (file_page-1)*per_page)).fetchall()
     
     conn.close()
     
@@ -324,13 +359,20 @@ def admin_data():
     return jsonify({
         'users': users_data,
         'activities': activities_data,
-        'files': files_data
+        'activities_total': activities_total,
+        'files': files_data,
+        'files_total': files_total
     })
 
 @app.route('/admin')
 def admin_panel():
     if 'user_id' not in session or not session.get('is_admin'):
         return redirect(url_for('login'))
+    
+    # Get pagination params for initial page load
+    activity_page = int(request.args.get('activity_page', 1))
+    file_page = int(request.args.get('file_page', 1))
+    per_page = int(request.args.get('per_page', 50))
     
     conn = get_db()
     # Get all users including the current admin
@@ -341,38 +383,34 @@ def admin_panel():
         ORDER BY created_at DESC
     ''').fetchall()
     
-    # Get recent user activity
+    # Get total activity count
+    activities_total = conn.execute('SELECT COUNT(*) FROM user_activity').fetchone()[0]
+    # Get paginated user activity
     activities = conn.execute('''
-        SELECT ua.id, ua.user_id, ua.event_type, ua.timestamp, ua.session_id, ua.ip_address,
+        SELECT ua.id, ua.user_id, ua.event_type, ua.timestamp, ua.session_id, ua.ip_address, ua.additional_data,
                u.email, u.username
         FROM user_activity ua
         JOIN users u ON ua.user_id = u.id
         ORDER BY ua.timestamp DESC
-        LIMIT 50
-    ''').fetchall()
+        LIMIT ? OFFSET ?
+    ''', (per_page, (activity_page-1)*per_page)).fetchall()
     
-    # Get recent file activities
+    # Get total file activity count
+    files_total = conn.execute('SELECT COUNT(*) FROM user_files').fetchone()[0]
+    # Get paginated file activities
     files = conn.execute('''
         SELECT uf.id, uf.user_id, uf.original_filename, uf.enhanced_filename, 
-               uf.upload_time, uf.enhancement_time, uf.file_size, uf.status,
+               uf.upload_time, uf.enhancement_time, uf.file_size, uf.status, uf.error_message,
                u.email, u.username
         FROM user_files uf
         JOIN users u ON uf.user_id = u.id
         ORDER BY uf.upload_time DESC
-        LIMIT 50
-    ''').fetchall()
-    
-    print(f"DEBUG: Found {len(activities)} activities")
-    for activity in activities:
-        print(f"DEBUG: Activity - {activity['timestamp']} - {activity['email']} - {activity['event_type']}")
-    
-    print(f"DEBUG: Found {len(files)} file activities")
-    for file in files:
-        print(f"DEBUG: File - {file['upload_time']} - {file['email']} - {file['original_filename']} - {file['status']}")
+        LIMIT ? OFFSET ?
+    ''', (per_page, (file_page-1)*per_page)).fetchall()
     
     conn.close()
     
-    return render_template('admin.html', users=users, activities=activities, files=files)
+    return render_template('admin.html', users=users, activities=activities, activities_total=activities_total, files=files, files_total=files_total, activity_page=activity_page, file_page=file_page, per_page=per_page)
 
 @app.route('/admin/approve/<int:user_id>', methods=['POST'])
 def approve_user(user_id):
@@ -380,11 +418,21 @@ def approve_user(user_id):
         return jsonify({'error': 'Unauthorized'}), 401
     
     conn = get_db()
-    conn.execute('UPDATE users SET is_approved = 1 WHERE id = ?', (user_id,))
-    conn.commit()
-    conn.close()
+    user = conn.execute('SELECT email FROM users WHERE id = ?', (user_id,)).fetchone()
+    if user:
+        conn.execute('UPDATE users SET is_approved = 1 WHERE id = ?', (user_id,))
+        conn.commit()
+        
+        # Log admin action
+        log_user_activity(session['user_id'], 'admin_approve_user', 
+                         ip_address=request.remote_addr, 
+                         additional_data=f"Approved user: {user['email']}")
+        
+        conn.close()
+        return jsonify({'success': True, 'message': 'User approved successfully'})
     
-    return jsonify({'success': True, 'message': 'User approved successfully'})
+    conn.close()
+    return jsonify({'error': 'User not found'}), 404
 
 @app.route('/admin/reject/<int:user_id>', methods=['POST'])
 def reject_user(user_id):
@@ -392,11 +440,21 @@ def reject_user(user_id):
         return jsonify({'error': 'Unauthorized'}), 401
     
     conn = get_db()
-    conn.execute('DELETE FROM users WHERE id = ?', (user_id,))
-    conn.commit()
-    conn.close()
+    user = conn.execute('SELECT email FROM users WHERE id = ?', (user_id,)).fetchone()
+    if user:
+        conn.execute('DELETE FROM users WHERE id = ?', (user_id,))
+        conn.commit()
+        
+        # Log admin action
+        log_user_activity(session['user_id'], 'admin_reject_user', 
+                         ip_address=request.remote_addr, 
+                         additional_data=f"Rejected user: {user['email']}")
+        
+        conn.close()
+        return jsonify({'success': True, 'message': 'User rejected and deleted'})
     
-    return jsonify({'success': True, 'message': 'User rejected and deleted'})
+    conn.close()
+    return jsonify({'error': 'User not found'}), 404
 
 @app.route('/admin/toggle-admin/<int:user_id>', methods=['POST'])
 def toggle_admin(user_id):
@@ -405,11 +463,18 @@ def toggle_admin(user_id):
     
     conn = get_db()
     # Get current admin status
-    user = conn.execute('SELECT is_admin FROM users WHERE id = ?', (user_id,)).fetchone()
+    user = conn.execute('SELECT is_admin, email FROM users WHERE id = ?', (user_id,)).fetchone()
     if user:
         new_status = 0 if user['is_admin'] else 1
         conn.execute('UPDATE users SET is_admin = ? WHERE id = ?', (new_status, user_id))
         conn.commit()
+        
+        # Log admin action
+        action = "granted admin privileges to" if new_status else "removed admin privileges from"
+        log_user_activity(session['user_id'], 'admin_toggle_admin', 
+                         ip_address=request.remote_addr, 
+                         additional_data=f"{action}: {user['email']}")
+        
         conn.close()
         return jsonify({'success': True, 'message': f'Admin status {"removed" if new_status == 0 else "granted"}'})
     
@@ -435,6 +500,12 @@ def admin_password_reset(user_id):
                        WHERE id = ?''', 
                     (generate_password_hash(new_password), user_id))
         conn.commit()
+        
+        # Log admin action
+        log_user_activity(session['user_id'], 'admin_password_reset', 
+                         ip_address=request.remote_addr, 
+                         additional_data=f"Reset password for: {user['email']}")
+        
         conn.close()
         return jsonify({'success': True, 'message': f'Password updated for {user["email"]}'})
     
@@ -453,6 +524,12 @@ def clear_password_reset(user_id):
                        SET password_reset_requested = 0, password_reset_date = NULL 
                        WHERE id = ?''', (user_id,))
         conn.commit()
+        
+        # Log admin action
+        log_user_activity(session['user_id'], 'admin_clear_password_reset', 
+                         ip_address=request.remote_addr, 
+                         additional_data=f"Cleared password reset for: {user['email']}")
+        
         conn.close()
         return jsonify({'success': True, 'message': f'Password reset request cleared for {user["email"]}'})
     
@@ -468,25 +545,109 @@ def delete_user(user_id):
     if user:
         conn.execute('DELETE FROM users WHERE id = ?', (user_id,))
         conn.commit()
+        
+        # Log admin action
+        log_user_activity(session['user_id'], 'admin_delete_user', 
+                         ip_address=request.remote_addr, 
+                         additional_data=f"Deleted user: {user['email']}")
+        
         conn.close()
         return jsonify({'success': True, 'message': f'User {user["email"]} deleted successfully'})
     conn.close()
     return jsonify({'error': 'User not found'}), 404
 
+@app.route('/admin/edit-user/<int:user_id>', methods=['POST'])
+def edit_user(user_id):
+    if 'user_id' not in session or not session.get('is_admin'):
+        return jsonify({'error': 'Unauthorized'}), 401
+    
+    try:
+        name = request.form.get('name', '').strip()
+        email = request.form.get('email', '').strip()
+        department = request.form.get('department', '').strip()
+        branch_location = request.form.get('branch_location', '').strip()
+        mobile = request.form.get('mobile', '').strip()
+        new_password = request.form.get('new_password', '').strip()
+        
+        # Validate required fields
+        if not name or not email:
+            return jsonify({'error': 'Name and email are required'}), 400
+        
+        # Validate email format
+        if '@' not in email or '.' not in email:
+            return jsonify({'error': 'Invalid email format'}), 400
+        
+        # Validate password if provided
+        if new_password and len(new_password) < 6:
+            return jsonify({'error': 'Password must be at least 6 characters long'}), 400
+        
+        conn = get_db()
+        
+        # Check if email is already taken by another user
+        existing_user = conn.execute('SELECT id FROM users WHERE email = ? AND id != ?', (email, user_id)).fetchone()
+        if existing_user:
+            conn.close()
+            return jsonify({'error': 'Email is already taken by another user'}), 400
+        
+        # Get original user data for logging
+        original_user = conn.execute('SELECT email FROM users WHERE id = ?', (user_id,)).fetchone()
+        
+        # Update user information
+        if new_password:
+            # Update with password change
+            conn.execute('''UPDATE users 
+                           SET name = ?, email = ?, department = ?, branch_location = ?, mobile = ?, password = ?
+                           WHERE id = ?''', 
+                        (name, email, department, branch_location, mobile, generate_password_hash(new_password), user_id))
+        else:
+            # Update without password change
+            conn.execute('''UPDATE users 
+                           SET name = ?, email = ?, department = ?, branch_location = ?, mobile = ?
+                           WHERE id = ?''', 
+                        (name, email, department, branch_location, mobile, user_id))
+        
+        conn.commit()
+        
+        # Log admin action
+        action_details = f"Edited user: {original_user['email']} -> {email}"
+        if new_password:
+            action_details += " (password changed)"
+        log_user_activity(session['user_id'], 'admin_edit_user', 
+                         ip_address=request.remote_addr, 
+                         additional_data=action_details)
+        
+        conn.close()
+        
+        message = f'User {email} updated successfully'
+        if new_password:
+            message += ' (password changed)'
+        
+        return jsonify({'success': True, 'message': message})
+        
+    except Exception as e:
+        return jsonify({'error': f'Error updating user: {str(e)}'}), 500
+
 @app.route('/api/enhance', methods=['POST'])
 def enhance_image():
     if 'user_id' not in session:
         return jsonify({'error': 'Unauthorized. Please log in.'}), 401
+    
+    file_id = None
+    temp_path = None
+    
     try:
         if 'image' not in request.files:
-            return jsonify({'error': 'No image file provided'}), 400
+            error_msg = 'No image file provided'
+            return jsonify({'error': error_msg}), 400
         
         file = request.files['image']
         if file.filename == '':
-            return jsonify({'error': 'No file selected'}), 400
+            error_msg = 'No file selected'
+            return jsonify({'error': error_msg}), 400
         
         if not allowed_file(file.filename):
-            return jsonify({'error': 'Invalid file type. Please upload an image file.'}), 400
+            error_msg = f'Invalid file type. Please upload an image file. Allowed types: {", ".join(app.config["ALLOWED_EXTENSIONS"])}'
+            return jsonify({'error': error_msg}), 400
         
         # Save uploaded file temporarily
         filename = secure_filename(file.filename)
@@ -496,6 +657,14 @@ def enhance_image():
         # Get file size
         file_size = os.path.getsize(temp_path)
         
+        # Check file size limit
+        if file_size > app.config['MAX_CONTENT_LENGTH']:
+            error_msg = f'File size too large. Maximum allowed size: {app.config["MAX_CONTENT_LENGTH"]/(1024*1024):.1f}MB'
+            log_file_activity(session['user_id'], filename, file_size, 'error', error_msg)
+            if os.path.exists(temp_path):
+                os.remove(temp_path)
+            return jsonify({'error': error_msg}), 400
+        
         # Log file upload
         file_id = log_file_activity(session['user_id'], filename, file_size, 'uploaded')
         
@@ -504,9 +673,11 @@ def enhance_image():
             results = enhance_image_api_method(temp_path)
             if results is None:
                 # No face detected or error
-                update_file_enhancement(file_id, None, 'error')
-                os.remove(temp_path)
-                return jsonify({'error': 'No face detected or enhancement failed.'}), 400
+                error_msg = 'No face detected in the image. Please upload an image with a clear face.'
+                update_file_enhancement(file_id, None, 'error', error_msg)
+                if os.path.exists(temp_path):
+                    os.remove(temp_path)
+                return jsonify({'error': error_msg}), 400
 
             # results is a tuple of 5 PIL Images (one for each fidelity)
             enhanced_images = [image_to_base64(img) for img in results]
@@ -527,7 +698,8 @@ def enhance_image():
             update_file_enhancement(file_id, enhanced_filename, 'enhanced')
             
             # Clean up temporary file
-            os.remove(temp_path)
+            if os.path.exists(temp_path):
+                os.remove(temp_path)
             
             return jsonify({
                 'success': True,
@@ -538,39 +710,85 @@ def enhance_image():
             })
             
         except Exception as e:
+            # Detailed error handling for enhancement process
+            error_msg = f'Error during image enhancement: {str(e)}'
+            print(f"DEBUG: Enhancement error - {error_msg}")
+            import traceback
+            traceback.print_exc()
+            
             # Update file record with error status
-            update_file_enhancement(file_id, None, 'error')
+            if file_id:
+                update_file_enhancement(file_id, None, 'error', error_msg)
+            
             # Clean up on error
-            if os.path.exists(temp_path):
+            if temp_path and os.path.exists(temp_path):
                 os.remove(temp_path)
-            return jsonify({'error': f'Error processing image: {str(e)}'}), 500
+            
+            return jsonify({'error': error_msg}), 500
             
     except Exception as e:
-        return jsonify({'error': f'Server error: {str(e)}'}), 500
+        # Catch any other unexpected errors
+        error_msg = f'Server error during file processing: {str(e)}'
+        print(f"DEBUG: Server error - {error_msg}")
+        import traceback
+        traceback.print_exc()
+        
+        # Log error if we managed to get a file_id
+        if file_id:
+            update_file_enhancement(file_id, None, 'error', error_msg)
+        
+        # Clean up on error
+        if temp_path and os.path.exists(temp_path):
+            os.remove(temp_path)
+        
+        return jsonify({'error': error_msg}), 500
 
 @app.route('/api/genai-enhance', methods=['POST'])
 def genai_enhance_image():
     if 'user_id' not in session:
         return jsonify({'error': 'Unauthorized. Please log in.'}), 401
+    
+    file_id = None
+    temp_path = None
+    
     try:
         if 'image' not in request.files:
-            return jsonify({'error': 'No image file provided'}), 400
+            error_msg = 'No image file provided'
+            return jsonify({'error': error_msg}), 400
+        
         file = request.files['image']
         if file.filename == '':
-            return jsonify({'error': 'No file selected'}), 400
+            error_msg = 'No file selected'
+            return jsonify({'error': error_msg}), 400
+        
         if not allowed_file(file.filename):
-            return jsonify({'error': 'Invalid file type. Please upload an image file.'}), 400
+            error_msg = f'Invalid file type. Please upload an image file. Allowed types: {", ".join(app.config["ALLOWED_EXTENSIONS"])}'
+            return jsonify({'error': error_msg}), 400
+        
         filename = secure_filename(file.filename)
         temp_path = os.path.join(app.config['UPLOAD_FOLDER'], f"{uuid.uuid4()}_{filename}")
         file.save(temp_path)
+        
         file_size = os.path.getsize(temp_path)
+        
+        # Check file size limit
+        if file_size > app.config['MAX_CONTENT_LENGTH']:
+            error_msg = f'File size too large. Maximum allowed size: {app.config["MAX_CONTENT_LENGTH"]/(1024*1024):.1f}MB'
+            log_file_activity(session['user_id'], filename, file_size, 'error', error_msg)
+            if os.path.exists(temp_path):
+                os.remove(temp_path)
+            return jsonify({'error': error_msg}), 400
+        
         file_id = log_file_activity(session['user_id'], filename, file_size, 'uploaded')
+        
         try:
             result_data = genai_enhance_image_api_method(temp_path)
             if result_data is None:
-                update_file_enhancement(file_id, None, 'error')
-                os.remove(temp_path)
-                return jsonify({'error': 'GENAI enhancement failed.'}), 400
+                error_msg = 'GENAI enhancement failed. Unable to process the image.'
+                update_file_enhancement(file_id, None, 'error', error_msg)
+                if os.path.exists(temp_path):
+                    os.remove(temp_path)
+                return jsonify({'error': error_msg}), 400
             
             # Extract images and metadata
             enhanced_images = [image_to_base64(img) for img in result_data['images']]
@@ -581,14 +799,19 @@ def genai_enhance_image():
             
             saved_original_path = os.path.join(app.config['UPLOAD_FOLDER'], f"original_{filename}")
             shutil.copy(temp_path, saved_original_path)
+            
             enhanced_image_paths = []
             for idx, img in enumerate(result_data['images']):
                 enhanced_path = os.path.join(app.config['UPLOAD_FOLDER'], f"genai_enhanced_{idx}_{filename}")
                 img.save(enhanced_path)
                 enhanced_image_paths.append(enhanced_path)
+            
             enhanced_filename = f"genai_enhanced_{filename}"
             update_file_enhancement(file_id, enhanced_filename, 'enhanced')
-            os.remove(temp_path)
+            
+            if os.path.exists(temp_path):
+                os.remove(temp_path)
+            
             return jsonify({
                 'success': True,
                 'enhanced_images': enhanced_images,
@@ -600,13 +823,38 @@ def genai_enhance_image():
                 'original_image_path': saved_original_path,
                 'enhanced_image_paths': enhanced_image_paths
             })
+            
         except Exception as e:
-            update_file_enhancement(file_id, None, 'error')
-            if os.path.exists(temp_path):
+            # Detailed error handling for enhancement process
+            error_msg = f'Error during GENAI enhancement: {str(e)}'
+            print(f"DEBUG: GENAI enhancement error - {error_msg}")
+            import traceback
+            traceback.print_exc()
+            
+            if file_id:
+                update_file_enhancement(file_id, None, 'error', error_msg)
+            
+            if temp_path and os.path.exists(temp_path):
                 os.remove(temp_path)
-            return jsonify({'error': f'Error processing image: {str(e)}'}), 500
+            
+            return jsonify({'error': error_msg}), 500
+            
     except Exception as e:
-        return jsonify({'error': f'Server error: {str(e)}'}), 500
+        # Catch any other unexpected errors
+        error_msg = f'Server error during GENAI processing: {str(e)}'
+        print(f"DEBUG: GENAI server error - {error_msg}")
+        import traceback
+        traceback.print_exc()
+        
+        # Log error if we managed to get a file_id
+        if file_id:
+            update_file_enhancement(file_id, None, 'error', error_msg)
+        
+        # Clean up on error
+        if temp_path and os.path.exists(temp_path):
+            os.remove(temp_path)
+        
+        return jsonify({'error': error_msg}), 500
 
 @app.route('/api/health')
 def health_check():

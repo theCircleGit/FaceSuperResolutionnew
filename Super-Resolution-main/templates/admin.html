@@ -143,6 +143,12 @@
                                     <td>{{ user.branch_location }}</td>
                                     <td>{{ user.mobile }}</td>
                                     <td class="action-buttons">
+                                        <button class="btn btn-info btn-sm edit-user-btn" data-user-id="{{ user.id }}" 
+                                                data-user-name="{{ user.name }}" data-user-email="{{ user.email }}"
+                                                data-user-department="{{ user.department }}" data-user-branch="{{ user.branch_location }}"
+                                                data-user-mobile="{{ user.mobile }}">
+                                            <i class="fas fa-edit"></i> Edit
+                                        </button>
                                         {% if not user.is_approved and not user.is_admin %}
                                             <button class="btn btn-success btn-sm approve-btn" data-user-id="{{ user.id }}">
                                                 <i class="fas fa-check"></i> Approve
@@ -215,6 +221,14 @@
                                 <option value="login">Login</option>
                                 <option value="logout">Logout</option>
                                 <option value="signup">Signup</option>
+                                <option value="password_reset_requested">Password Reset Request</option>
+                                <option value="admin_approve_user">Admin: Approve User</option>
+                                <option value="admin_reject_user">Admin: Reject User</option>
+                                <option value="admin_toggle_admin">Admin: Toggle Admin</option>
+                                <option value="admin_password_reset">Admin: Password Reset</option>
+                                <option value="admin_clear_password_reset">Admin: Clear Password Reset</option>
+                                <option value="admin_delete_user">Admin: Delete User</option>
+                                <option value="admin_edit_user">Admin: Edit User</option>
                             </select>
                         </div>
                         <div class="col-md-2">
@@ -244,6 +258,7 @@
                                     <th>User</th>
                                     <th>Event</th>
                                     <th>IP Address</th>
+                                    <th>Details</th>
                                 </tr>
                             </thead>
                             <tbody>
@@ -263,6 +278,18 @@
                                             <span class="badge bg-secondary">
                                                 <i class="fas fa-sign-out-alt"></i> Logout
                                             </span>
+                                        {% elif activity.event_type == 'signup' %}
+                                            <span class="badge bg-primary">
+                                                <i class="fas fa-user-plus"></i> Signup
+                                            </span>
+                                        {% elif activity.event_type == 'password_reset_requested' %}
+                                            <span class="badge bg-warning">
+                                                <i class="fas fa-key"></i> Password Reset Request
+                                            </span>
+                                        {% elif activity.event_type.startswith('admin_') %}
+                                            <span class="badge bg-danger">
+                                                <i class="fas fa-crown"></i> {{ activity.event_type.replace('admin_', '').replace('_', ' ').title() }}
+                                            </span>
                                         {% else %}
                                             <span class="badge bg-info">{{ activity.event_type }}</span>
                                         {% endif %}
@@ -274,11 +301,22 @@
                                             <span class="text-muted">-</span>
                                         {% endif %}
                                     </td>
+                                    <td>
+                                        {% if activity.additional_data %}
+                                            <small class="text-muted">{{ activity.additional_data }}</small>
+                                        {% else %}
+                                            <span class="text-muted">-</span>
+                                        {% endif %}
+                                    </td>
                                 </tr>
                                 {% endfor %}
                             </tbody>
                         </table>
                     </div>
+                    <!-- Pagination Controls for Activity Log -->
+                    <nav aria-label="Activity pagination">
+                        <ul class="pagination justify-content-center" id="activityPagination"></ul>
+                    </nav>
                     {% else %}
                     <div class="text-center py-4">
                         <i class="fas fa-history fa-3x text-muted mb-3"></i>
@@ -343,6 +381,7 @@
                                     <th>File Size</th>
                                     <th>Status</th>
                                     <th>Enhancement Time</th>
+                                    <th>Error Details</th>
                                 </tr>
                             </thead>
                             <tbody>
@@ -385,11 +424,44 @@
                                         {% endif %}
                                     </td>
                                     <td>{{ file.enhancement_time if file.enhancement_time else '-' }}</td>
+                                    <td>
+                                        {% if file.error_message %}
+                                            <div class="d-flex align-items-center">
+                                                <span class="badge bg-danger me-2">
+                                                    <i class="fas fa-exclamation-circle"></i> ERROR
+                                                </span>
+                                                <button class="btn btn-sm btn-outline-danger" type="button" 
+                                                        data-bs-toggle="collapse" 
+                                                        data-bs-target="#error-{{ file.id }}" 
+                                                        aria-expanded="false"
+                                                        title="Click to view error details">
+                                                    <i class="fas fa-eye"></i> View Details
+                                                </button>
+                                            </div>
+                                            <div class="collapse mt-2" id="error-{{ file.id }}">
+                                                <div class="card card-body bg-light border-danger">
+                                                    <div class="d-flex align-items-start">
+                                                        <i class="fas fa-exclamation-triangle text-danger me-2 mt-1"></i>
+                                                        <div>
+                                                            <strong class="text-danger">Error Details:</strong>
+                                                            <p class="text-danger mb-0 mt-1">{{ file.error_message }}</p>
+                                                        </div>
+                                                    </div>
+                                                </div>
+                                            </div>
+                                        {% else %}
+                                            <span class="text-muted">-</span>
+                                        {% endif %}
+                                    </td>
                                 </tr>
                                 {% endfor %}
                             </tbody>
                         </table>
                     </div>
+                    <!-- Pagination Controls for File Log -->
+                    <nav aria-label="File pagination">
+                        <ul class="pagination justify-content-center" id="filePagination"></ul>
+                    </nav>
                     {% else %}
                     <div class="text-center py-4">
                         <i class="fas fa-file-image fa-3x text-muted mb-3"></i>
@@ -445,6 +517,7 @@
                                 <div class="card-body">
                                     <h6 class="card-title">GPU Memory</h6>
                                     <h3 id="gpuMemory">--%</h3>
+                                    <small class="text-light">Hover for details</small>
                                 </div>
                             </div>
                         </div>
@@ -513,6 +586,60 @@
         </div>
     </div>
 
+    <!-- Edit User Modal -->
+    <div class="modal fade" id="editUserModal" tabindex="-1">
+        <div class="modal-dialog">
+            <div class="modal-content">
+                <div class="modal-header">
+                    <h5 class="modal-title">Edit User</h5>
+                    <button type="button" class="btn-close" data-bs-dismiss="modal"></button>
+                </div>
+                <div class="modal-body">
+                    <form id="editUserForm">
+                        <div class="mb-3">
+                            <label for="editUserName" class="form-label">Name</label>
+                            <input type="text" class="form-control" id="editUserName" required>
+                        </div>
+                        <div class="mb-3">
+                            <label for="editUserEmail" class="form-label">Email</label>
+                            <input type="email" class="form-control" id="editUserEmail" required>
+                        </div>
+                        <div class="mb-3">
+                            <label for="editUserDepartment" class="form-label">Department</label>
+                            <input type="text" class="form-control" id="editUserDepartment">
+                        </div>
+                        <div class="mb-3">
+                            <label for="editUserBranch" class="form-label">Branch Location</label>
+                            <input type="text" class="form-control" id="editUserBranch">
+                        </div>
+                        <div class="mb-3">
+                            <label for="editUserMobile" class="form-label">Mobile</label>
+                            <input type="tel" class="form-control" id="editUserMobile">
+                        </div>
+                        <hr>
+                        <div class="mb-3">
+                            <div class="form-check">
+                                <input class="form-check-input" type="checkbox" id="changePasswordCheck">
+                                <label class="form-check-label" for="changePasswordCheck">
+                                    Change Password
+                                </label>
+                            </div>
+                        </div>
+                        <div class="mb-3" id="passwordChangeSection" style="display: none;">
+                            <label for="editUserPassword" class="form-label">New Password</label>
+                            <input type="password" class="form-control" id="editUserPassword" placeholder="Enter new password (min 6 characters)">
+                            <div class="form-text">Leave blank to keep current password.</div>
+                        </div>
+                    </form>
+                </div>
+                <div class="modal-footer">
+                    <button type="button" class="btn btn-secondary" data-bs-dismiss="modal">Cancel</button>
+                    <button type="button" class="btn btn-primary" id="saveEditedUser">Save Changes</button>
+                </div>
+            </div>
+        </div>
+    </div>
+
     <script src="https://cdn.jsdelivr.net/npm/bootstrap@5.1.3/dist/js/bootstrap.bundle.min.js"></script>
     <script>
         // Auto-refresh functionality
@@ -521,11 +648,14 @@
         const REFRESH_INTERVAL = 30000; // 30 seconds
 
         function startAutoRefresh() {
+            console.log('Starting auto-refresh, countdown:', refreshCountdown);
             refreshInterval = setInterval(() => {
                 refreshCountdown--;
+                console.log('Countdown:', refreshCountdown);
                 updateRefreshStatus();
                 
                 if (refreshCountdown <= 0) {
+                    console.log('Countdown reached 0, refreshing...');
                     refreshPage();
                 }
             }, 1000);
@@ -533,6 +663,7 @@
 
         function stopAutoRefresh() {
             if (refreshInterval) {
+                console.log('Stopping auto-refresh');
                 clearInterval(refreshInterval);
                 refreshInterval = null;
             }
@@ -540,6 +671,9 @@
 
         // Start auto-refresh when page loads
         document.addEventListener('DOMContentLoaded', function() {
+            console.log('DOM loaded, starting auto-refresh');
+            refreshCountdown = 30; // Ensure countdown is reset
+            updateRefreshStatus(); // Update display immediately
             startAutoRefresh();
         });
 
@@ -550,8 +684,12 @@
                 e.target.id === 'dateToFilter' || e.target.id === 'fileStatusFilter' || 
                 e.target.id === 'fileUserFilter' || e.target.id === 'fileDateFromFilter' || 
                 e.target.id === 'fileDateToFilter') {
+                console.log('User interaction detected, pausing auto-refresh');
                 stopAutoRefresh();
                 setTimeout(() => {
+                    console.log('Resuming auto-refresh after user interaction');
+                    refreshCountdown = 30; // Reset countdown
+                    updateRefreshStatus();
                     startAutoRefresh();
                 }, 10000); // Resume after 10 seconds of inactivity
             }
@@ -559,33 +697,24 @@
 
         function updateRefreshStatus() {
             const statusElement = document.getElementById('autoRefreshStatus');
-            const icon = statusElement.querySelector('i');
+            if (!statusElement) {
+                console.error('Auto-refresh status element not found');
+                return;
+            }
             
             if (refreshCountdown <= 5) {
-                icon.className = 'fas fa-circle text-warning';
                 statusElement.innerHTML = `<i class="fas fa-circle text-warning"></i> Auto-refresh: ${refreshCountdown}s`;
             } else {
-                icon.className = 'fas fa-circle text-success';
                 statusElement.innerHTML = `<i class="fas fa-circle text-success"></i> Auto-refresh: ${refreshCountdown}s`;
             }
         }
 
         function refreshPage() {
-            // Show loading indicator
-            const refreshBtn = document.querySelector('button[onclick="refreshPage()"]');
-            const originalContent = refreshBtn.innerHTML;
-            refreshBtn.innerHTML = '<i class="fas fa-spinner fa-spin"></i> Refreshing...';
-            refreshBtn.disabled = true;
-            
             // Try to refresh data via AJAX first, fallback to page reload
             refreshDataViaAJAX().then(() => {
                 // Reset countdown
                 refreshCountdown = 30;
                 updateRefreshStatus();
-                
-                // Restore button
-                refreshBtn.innerHTML = originalContent;
-                refreshBtn.disabled = false;
             }).catch(() => {
                 // Fallback to full page reload
                 location.reload();
@@ -663,8 +792,12 @@
         }
 
         function updateActivityTable(activities) {
+            console.log('Updating activity table with:', activities);
             const tbody = document.querySelector('#activityTable tbody');
-            if (!tbody) return;
+            if (!tbody) {
+                console.error('Activity table tbody not found');
+                return;
+            }
             
             tbody.innerHTML = activities.map(activity => `
                 <tr data-event="${activity.event_type}" 
@@ -678,6 +811,12 @@
                             '<span class="badge bg-success"><i class="fas fa-sign-in-alt"></i> Login</span>' :
                             activity.event_type === 'logout' ?
                             '<span class="badge bg-secondary"><i class="fas fa-sign-out-alt"></i> Logout</span>' :
+                            activity.event_type === 'signup' ?
+                            '<span class="badge bg-primary"><i class="fas fa-user-plus"></i> Signup</span>' :
+                            activity.event_type === 'password_reset_requested' ?
+                            '<span class="badge bg-warning"><i class="fas fa-key"></i> Password Reset Request</span>' :
+                            activity.event_type.startsWith('admin_') ?
+                            '<span class="badge bg-danger"><i class="fas fa-crown"></i> ' + activity.event_type.replace('admin_', '').replace(/_/g, ' ').replace(/\b\w/g, l => l.toUpperCase()) + '</span>' :
                             `<span class="badge bg-info">${activity.event_type}</span>`
                         }
                     </td>
@@ -687,13 +826,24 @@
                             '<span class="text-muted">-</span>'
                         }
                     </td>
+                    <td>
+                        ${activity.additional_data ? 
+                            `<small class="text-muted">${activity.additional_data}</small>` :
+                            '<span class="text-muted">-</span>'
+                        }
+                    </td>
                 </tr>
             `).join('');
+            console.log('Activity table updated with', activities.length, 'rows');
         }
 
         function updateFileTable(files) {
+            console.log('Updating file table with:', files);
             const tbody = document.querySelector('#fileTable tbody');
-            if (!tbody) return;
+            if (!tbody) {
+                console.error('File table tbody not found');
+                return;
+            }
             
             tbody.innerHTML = files.map(file => {
                 const fileSize = file.file_size ? 
@@ -709,6 +859,32 @@
                     '<span class="badge bg-danger"><i class="fas fa-exclamation-triangle"></i> Error</span>' :
                     `<span class="badge bg-secondary">${file.status}</span>`;
                 
+                const errorDetails = file.error_message ? 
+                    `<div class="d-flex align-items-center">
+                        <span class="badge bg-danger me-2">
+                            <i class="fas fa-exclamation-circle"></i> ERROR
+                        </span>
+                        <button class="btn btn-sm btn-outline-danger" type="button" 
+                                data-bs-toggle="collapse" 
+                                data-bs-target="#error-${file.id}" 
+                                aria-expanded="false"
+                                title="Click to view error details">
+                            <i class="fas fa-eye"></i> View Details
+                        </button>
+                    </div>
+                    <div class="collapse mt-2" id="error-${file.id}">
+                        <div class="card card-body bg-light border-danger">
+                            <div class="d-flex align-items-start">
+                                <i class="fas fa-exclamation-triangle text-danger me-2 mt-1"></i>
+                                <div>
+                                    <strong class="text-danger">Error Details:</strong>
+                                    <p class="text-danger mb-0 mt-1">${file.error_message}</p>
+                                </div>
+                            </div>
+                        </div>
+                    </div>` :
+                    '<span class="text-muted">-</span>';
+                
                 return `
                     <tr data-status="${file.status}" 
                         data-email="${file.email}"
@@ -720,9 +896,11 @@
                         <td>${fileSize}</td>
                         <td>${statusBadge}</td>
                         <td>${file.enhancement_time || '-'}</td>
+                        <td>${errorDetails}</td>
                     </tr>
                 `;
             }).join('');
+            console.log('File table updated with', files.length, 'rows');
         }
 
         // Show notification toast
@@ -925,6 +1103,88 @@
             });
         });
 
+        // Edit user functionality
+        let currentEditUserId = null;
+        const editUserModal = new bootstrap.Modal(document.getElementById('editUserModal'));
+
+        document.querySelectorAll('.edit-user-btn').forEach(btn => {
+            btn.addEventListener('click', function() {
+                currentEditUserId = this.dataset.userId;
+                const userName = this.dataset.userName;
+                const userEmail = this.dataset.userEmail;
+                const userDepartment = this.dataset.userDepartment;
+                const userBranch = this.dataset.userBranch;
+                const userMobile = this.dataset.userMobile;
+
+                document.getElementById('editUserName').value = userName;
+                document.getElementById('editUserEmail').value = userEmail;
+                document.getElementById('editUserDepartment').value = userDepartment;
+                document.getElementById('editUserBranch').value = userBranch;
+                document.getElementById('editUserMobile').value = userMobile;
+                
+                // Reset password change section
+                document.getElementById('changePasswordCheck').checked = false;
+                document.getElementById('passwordChangeSection').style.display = 'none';
+                document.getElementById('editUserPassword').value = '';
+
+                editUserModal.show();
+            });
+        });
+
+        // Handle password change checkbox
+        document.getElementById('changePasswordCheck').addEventListener('change', function() {
+            const passwordSection = document.getElementById('passwordChangeSection');
+            if (this.checked) {
+                passwordSection.style.display = 'block';
+            } else {
+                passwordSection.style.display = 'none';
+                document.getElementById('editUserPassword').value = '';
+            }
+        });
+
+        document.getElementById('saveEditedUser').addEventListener('click', function() {
+            if (!currentEditUserId) {
+                showNotification('No user selected for editing', 'danger');
+                return;
+            }
+
+            const formData = new FormData();
+            formData.append('name', document.getElementById('editUserName').value);
+            formData.append('email', document.getElementById('editUserEmail').value);
+            formData.append('department', document.getElementById('editUserDepartment').value);
+            formData.append('branch_location', document.getElementById('editUserBranch').value);
+            formData.append('mobile', document.getElementById('editUserMobile').value);
+            
+            // Add password if checkbox is checked and password is provided
+            if (document.getElementById('changePasswordCheck').checked) {
+                const newPassword = document.getElementById('editUserPassword').value;
+                if (newPassword && newPassword.length >= 6) {
+                    formData.append('new_password', newPassword);
+                } else if (newPassword && newPassword.length < 6) {
+                    showNotification('Password must be at least 6 characters long', 'danger');
+                    return;
+                }
+            }
+
+            fetch(`/admin/edit-user/${currentEditUserId}`, {
+                method: 'POST',
+                body: formData
+            })
+            .then(response => response.json())
+            .then(data => {
+                if (data.success) {
+                    showNotification(data.message, 'success');
+                    editUserModal.hide();
+                    setTimeout(() => location.reload(), 1000);
+                } else {
+                    showNotification(data.error, 'danger');
+                }
+            })
+            .catch(error => {
+                showNotification('Error saving edited user', 'danger');
+            });
+        });
+
         // Clear activity filters
         function clearActivityFilters() {
             document.getElementById('eventFilter').value = '';
@@ -1027,10 +1287,20 @@
                     if (data.disk) {
                         document.getElementById('diskUsage').textContent = data.disk.percent.toFixed(1) + '%';
                     }
+                    
+                    // Handle GPU information with better fallbacks
+                    const gpuElement = document.getElementById('gpuMemory');
                     if (data.gpu && data.gpu.nvidia_gpus && data.gpu.nvidia_gpus[0]) {
-                        document.getElementById('gpuMemory').textContent = data.gpu.nvidia_gpus[0].memory_percent.toFixed(1) + '%';
+                        gpuElement.textContent = data.gpu.nvidia_gpus[0].memory_percent.toFixed(1) + '%';
+                    } else if (data.gpu && data.gpu.message) {
+                        gpuElement.textContent = 'N/A';
+                        gpuElement.title = data.gpu.message;
+                    } else if (data.gpu && data.gpu.error) {
+                        gpuElement.textContent = 'Error';
+                        gpuElement.title = data.gpu.error;
                     } else {
-                        document.getElementById('gpuMemory').textContent = '--%';
+                        gpuElement.textContent = 'N/A';
+                        gpuElement.title = 'No GPU monitoring available';
                     }
 
                     // Fill the details table
@@ -1038,19 +1308,173 @@
                     details += `<tr><td>CPU Cores</td><td>${data.cpu.count}</td><td></td></tr>`;
                     details += `<tr><td>CPU Frequency</td><td>${data.cpu.frequency_mhz} MHz</td><td></td></tr>`;
                     details += `<tr><td>RAM Used</td><td>${(data.cpu.memory_usage_mb).toFixed(1)} MB</td><td>${(data.cpu.memory_total_mb).toFixed(1)} MB total</td></tr>`;
+                    
+                    // GPU details with better error handling
                     if (data.gpu && data.gpu.nvidia_gpus && data.gpu.nvidia_gpus[0]) {
                         const gpu = data.gpu.nvidia_gpus[0];
                         details += `<tr><td>GPU Name</td><td colspan="2">${gpu.name}</td></tr>`;
                         details += `<tr><td>GPU Memory Used</td><td>${gpu.memory_used_mb.toFixed(1)} MB</td><td>${gpu.memory_total_mb.toFixed(1)} MB total</td></tr>`;
                         details += `<tr><td>GPU Utilization</td><td>${gpu.utilization_percent}%</td><td>Temp: ${gpu.temperature_celsius}°C</td></tr>`;
+                    } else if (data.gpu && data.gpu.detected_gpus) {
+                        details += `<tr><td>Detected GPUs</td><td colspan="2">${data.gpu.detected_gpus.length} GPU(s) found</td></tr>`;
+                        data.gpu.detected_gpus.forEach((gpu, index) => {
+                            details += `<tr><td>GPU ${index + 1}</td><td colspan="2">${gpu}</td></tr>`;
+                        });
+                    } else if (data.gpu && data.gpu.message) {
+                        details += `<tr><td>GPU Status</td><td colspan="2">${data.gpu.message}</td></tr>`;
+                        if (data.gpu.error) {
+                            details += `<tr><td>GPU Error</td><td colspan="2">${data.gpu.error}</td></tr>`;
+                        }
+                    } else {
+                        details += `<tr><td>GPU Status</td><td colspan="2">No GPU monitoring available</td></tr>`;
                     }
+                    
                     document.getElementById('systemStats').innerHTML = details;
+                })
+                .catch(error => {
+                    console.error('Error fetching system stats:', error);
+                    // Show error state in GPU memory display
+                    const gpuElement = document.getElementById('gpuMemory');
+                    gpuElement.textContent = 'Error';
+                    gpuElement.title = 'Failed to fetch system stats';
                 });
         }
 
         // Start fetching stats automatically every 5 seconds
         fetchSystemStats();
         monitoringInterval = setInterval(fetchSystemStats, 5000);
+
+        // Pagination state
+        let activityPage = parseInt('{{ activity_page|default(1) }}') || 1;
+        let filePage = parseInt('{{ file_page|default(1) }}') || 1;
+        const perPage = parseInt('{{ per_page|default(50) }}') || 50;
+        let activitiesTotal = parseInt('{{ activities_total|default(0) }}') || 0;
+        let filesTotal = parseInt('{{ files_total|default(0) }}') || 0;
+
+        // Update pagination controls
+        function renderPagination(containerId, currentPage, totalRows, perPage, onPageChange) {
+            const totalPages = Math.ceil(totalRows / perPage);
+            const container = document.getElementById(containerId);
+            console.log(`Rendering pagination for ${containerId}:`, { currentPage, totalRows, perPage, totalPages });
+            
+            if (!container) {
+                console.error(`Container ${containerId} not found`);
+                return;
+            }
+            
+            let html = '';
+            if (totalPages <= 1) {
+                container.innerHTML = '';
+                console.log(`No pagination needed for ${containerId} (totalPages: ${totalPages})`);
+                return;
+            }
+            
+            // Previous button
+            html += `<li class="page-item${currentPage === 1 ? ' disabled' : ''}"><a class="page-link" href="#" data-page="${currentPage-1}">Previous</a></li>`;
+            
+            // Page numbers
+            for (let i = 1; i <= totalPages; i++) {
+                html += `<li class="page-item${i === currentPage ? ' active' : ''}"><a class="page-link" href="#" data-page="${i}">${i}</a></li>`;
+            }
+            
+            // Next button
+            html += `<li class="page-item${currentPage === totalPages ? ' disabled' : ''}"><a class="page-link" href="#" data-page="${currentPage+1}">Next</a></li>`;
+            
+            container.innerHTML = html;
+            console.log(`Pagination HTML for ${containerId}:`, html);
+            
+            // Add event listeners
+            container.querySelectorAll('a.page-link').forEach(link => {
+                link.addEventListener('click', function(e) {
+                    e.preventDefault();
+                    const page = parseInt(this.getAttribute('data-page'));
+                    console.log(`Pagination link clicked for ${containerId}:`, { page, currentPage, totalPages });
+                    if (!isNaN(page) && page >= 1 && page <= totalPages && page !== currentPage) {
+                        onPageChange(page);
+                    }
+                });
+            });
+        }
+
+        // Fetch paginated data
+        async function fetchPaginatedData() {
+            const url = `/admin/data?activity_page=${activityPage}&file_page=${filePage}&per_page=${perPage}`;
+            console.log('Fetching paginated data:', url);
+            const response = await fetch(url);
+            if (!response.ok) throw new Error('Failed to fetch data');
+            const data = await response.json();
+            console.log('Received data:', {
+                activities: data.activities?.length || 0,
+                activities_total: data.activities_total,
+                files: data.files?.length || 0,
+                files_total: data.files_total
+            });
+            return data;
+        }
+
+        // Update all tables and paginations
+        async function updateAllTablesAndPaginations() {
+            try {
+                console.log('Updating tables and paginations:', { activityPage, filePage, perPage });
+                const data = await fetchPaginatedData();
+                // Update stats
+                updateUserStats(data.users);
+                // Update tables
+                updateActivityTable(data.activities);
+                updateFileTable(data.files);
+                // Update totals
+                activitiesTotal = data.activities_total;
+                filesTotal = data.files_total;
+                console.log('Updated totals:', { activitiesTotal, filesTotal });
+                // Render paginations
+                renderPagination('activityPagination', activityPage, activitiesTotal, perPage, (page) => {
+                    console.log('Activity page changed to:', page);
+                    activityPage = page;
+                    updateAllTablesAndPaginations();
+                });
+                renderPagination('filePagination', filePage, filesTotal, perPage, (page) => {
+                    console.log('File page changed to:', page);
+                    filePage = page;
+                    updateAllTablesAndPaginations();
+                });
+            } catch (error) {
+                console.error('Error updating data:', error);
+                showNotification('Failed to update data', 'danger');
+            }
+        }
+
+        // Initialize pagination when DOM is loaded
+        document.addEventListener('DOMContentLoaded', function() {
+            // Initial render of pagination controls
+            renderPagination('activityPagination', activityPage, activitiesTotal, perPage, (page) => {
+                activityPage = page;
+                updateAllTablesAndPaginations();
+            });
+            renderPagination('filePagination', filePage, filesTotal, perPage, (page) => {
+                filePage = page;
+                updateAllTablesAndPaginations();
+            });
+        });
+
+        // When filters change, reset to page 1 and update
+        function onActivityFilterChange() {
+            activityPage = 1;
+            updateAllTablesAndPaginations();
+        }
+        function onFileFilterChange() {
+            filePage = 1;
+            updateAllTablesAndPaginations();
+        }
+        
+        // Attach filter change events
+        ['eventFilter','activitySearchFilter','ipAddressFilter','dateFromFilter','dateToFilter'].forEach(id => {
+            const el = document.getElementById(id);
+            if (el) el.addEventListener('change', onActivityFilterChange);
+        });
+        ['fileStatusFilter','fileUserFilter','fileDateFromFilter','fileDateToFilter'].forEach(id => {
+            const el = document.getElementById(id);
+            if (el) el.addEventListener('change', onFileFilterChange);
+        });
     </script>
 </body>
 </html> 
