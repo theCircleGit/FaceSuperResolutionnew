@@ -27,6 +27,7 @@ from reportlab.platypus import SimpleDocTemplate, Paragraph, Spacer, Image as RL
 from reportlab.lib.styles import getSampleStyleSheet, ParagraphStyle
 from io import BytesIO
 import shutil
+import json
 
 # Import system monitoring
 from system_monitor import system_monitor
@@ -92,6 +93,9 @@ def init_db():
         case_id TEXT DEFAULT NULL,
         original_filename TEXT,
         enhanced_filename TEXT,
+        original_file_path TEXT DEFAULT NULL,
+        enhanced_file_paths TEXT DEFAULT NULL,
+        report_file_path TEXT DEFAULT NULL,
         upload_time TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
         enhancement_time TIMESTAMP,
         file_size INTEGER,
@@ -127,6 +131,18 @@ def init_db():
         conn.execute('ALTER TABLE user_files ADD COLUMN case_id TEXT DEFAULT NULL')
     except Exception:
         pass
+    try:
+        conn.execute('ALTER TABLE user_files ADD COLUMN original_file_path TEXT DEFAULT NULL')
+    except Exception:
+        pass
+    try:
+        conn.execute('ALTER TABLE user_files ADD COLUMN enhanced_file_paths TEXT DEFAULT NULL')
+    except Exception:
+        pass
+    try:
+        conn.execute('ALTER TABLE user_files ADD COLUMN report_file_path TEXT DEFAULT NULL')
+    except Exception:
+        pass
     # Update existing users to be approved if they don't have the is_approved field set
     try:
         conn.execute('UPDATE users SET is_approved = 1 WHERE is_approved IS NULL')
@@ -157,7 +173,7 @@ def log_user_activity(user_id, event_type, session_id=None, ip_address=None, add
     conn.close()
     print(f"DEBUG: Activity logged successfully")
 
-def log_file_activity(user_id, original_filename, file_size, status='uploaded', error_message=None, case_id=None):
+def log_file_activity(user_id, original_filename, file_size, status='uploaded', error_message=None, case_id=None, original_file_path=None):
     """Log file upload with optional error message and case ID"""
     print(f"DEBUG: Logging file upload - User: {user_id}, File: {original_filename}, Size: {file_size}, Status: {status}, Case ID: {case_id}")
     if error_message:
@@ -166,8 +182,8 @@ def log_file_activity(user_id, original_filename, file_size, status='uploaded', 
     conn = get_db()
     cursor = conn.cursor()
     cursor.execute(
-        'INSERT INTO user_files (user_id, case_id, original_filename, file_size, status, error_message) VALUES (?, ?, ?, ?, ?, ?)',
-        (user_id, case_id, original_filename, file_size, status, error_message)
+        'INSERT INTO user_files (user_id, case_id, original_filename, original_file_path, file_size, status, error_message) VALUES (?, ?, ?, ?, ?, ?, ?)',
+        (user_id, case_id, original_filename, original_file_path, file_size, status, error_message)
     )
     conn.commit()
     file_id = cursor.lastrowid
@@ -175,17 +191,26 @@ def log_file_activity(user_id, original_filename, file_size, status='uploaded', 
     print(f"DEBUG: File upload logged with ID: {file_id}")
     return file_id
 
-def update_file_enhancement(file_id, enhanced_filename, status='enhanced', error_message=None):
+def update_file_enhancement(file_id, enhanced_filename, status='enhanced', error_message=None, enhanced_file_paths=None, report_file_path=None):
     """Update file record when enhancement is complete or fails"""
     print(f"DEBUG: Updating file enhancement - File ID: {file_id}, Enhanced: {enhanced_filename}, Status: {status}")
     if error_message:
         print(f"DEBUG: Error message: {error_message}")
     
     conn = get_db()
-    conn.execute(
-        'UPDATE user_files SET enhanced_filename = ?, enhancement_time = CURRENT_TIMESTAMP, status = ?, error_message = ? WHERE id = ?',
-        (enhanced_filename, status, error_message, file_id)
-    )
+    update_fields = ['enhanced_filename = ?', 'enhancement_time = CURRENT_TIMESTAMP', 'status = ?', 'error_message = ?']
+    update_values = [enhanced_filename, status, error_message]
+    if enhanced_file_paths:
+        import json
+        enhanced_paths_json = json.dumps(enhanced_file_paths)
+        update_fields.append('enhanced_file_paths = ?')
+        update_values.append(enhanced_paths_json)
+    if report_file_path:
+        update_fields.append('report_file_path = ?')
+        update_values.append(report_file_path)
+    update_values.append(file_id)
+    sql = f"UPDATE user_files SET {', '.join(update_fields)} WHERE id = ?"
+    conn.execute(sql, tuple(update_values))
     conn.commit()
     conn.close()
     print(f"DEBUG: File enhancement updated")
@@ -674,7 +699,7 @@ def enhance_image():
         case_id = request.form.get('case_id', '').strip() or None
         
         # Log file upload
-        file_id = log_file_activity(session['user_id'], filename, file_size, 'uploaded', case_id=case_id)
+        file_id = log_file_activity(session['user_id'], filename, file_size, 'uploaded', case_id=case_id, original_file_path=temp_path)
         
         try:
             # --- Use the real enhancement function ---
@@ -703,7 +728,19 @@ def enhance_image():
             
             # Update file record with enhancement completion
             enhanced_filename = f"enhanced_{filename}"
-            update_file_enhancement(file_id, enhanced_filename, 'enhanced')
+            # Generate and save report PDF
+            report_dir = os.path.join(app.config['UPLOAD_FOLDER'], 'reports')
+            os.makedirs(report_dir, exist_ok=True)
+            report_file_path = os.path.join(report_dir, f"report_{file_id}_{filename}.pdf")
+            request_info = {
+                'timestamp': datetime.now().strftime('%Y-%m-%d %H:%M:%S'),
+                'taskId': str(file_id),
+                'userEmail': session.get('username', 'N/A')
+            }
+            pdf_data = create_pdf(saved_original_path, enhanced_image_paths, request_info)
+            with open(report_file_path, 'wb') as f:
+                f.write(pdf_data)
+            update_file_enhancement(file_id, enhanced_filename, 'enhanced', enhanced_file_paths=enhanced_image_paths, report_file_path=report_file_path)
             
             # Clean up temporary file
             if os.path.exists(temp_path):
@@ -790,7 +827,7 @@ def genai_enhance_image():
         # Get case ID from form data (optional)
         case_id = request.form.get('case_id', '').strip() or None
         
-        file_id = log_file_activity(session['user_id'], filename, file_size, 'uploaded', case_id=case_id)
+        file_id = log_file_activity(session['user_id'], filename, file_size, 'uploaded', case_id=case_id, original_file_path=temp_path)
         
         try:
             result_data = genai_enhance_image_api_method(temp_path)
@@ -818,7 +855,19 @@ def genai_enhance_image():
                 enhanced_image_paths.append(enhanced_path)
             
             enhanced_filename = f"genai_enhanced_{filename}"
-            update_file_enhancement(file_id, enhanced_filename, 'enhanced')
+            # Generate and save report PDF
+            report_dir = os.path.join(app.config['UPLOAD_FOLDER'], 'reports')
+            os.makedirs(report_dir, exist_ok=True)
+            report_file_path = os.path.join(report_dir, f"report_{file_id}_{filename}.pdf")
+            request_info = {
+                'timestamp': datetime.now().strftime('%Y-%m-%d %H:%M:%S'),
+                'taskId': str(file_id),
+                'userEmail': session.get('username', 'N/A')
+            }
+            pdf_data = create_pdf(saved_original_path, enhanced_image_paths, request_info)
+            with open(report_file_path, 'wb') as f:
+                f.write(pdf_data)
+            update_file_enhancement(file_id, enhanced_filename, 'enhanced', enhanced_file_paths=enhanced_image_paths, report_file_path=report_file_path)
             
             if os.path.exists(temp_path):
                 os.remove(temp_path)
@@ -1006,8 +1055,8 @@ def get_user_cases():
         
         # Get all files for the user, ordered by upload time
         files = conn.execute('''
-            SELECT id, case_id, original_filename, enhanced_filename, 
-                   upload_time, enhancement_time, file_size, status, error_message
+            SELECT id, case_id, original_filename, enhanced_filename, original_file_path, enhanced_file_paths,
+                   upload_time, enhancement_time, file_size, status, error_message, report_file_path
             FROM user_files 
             WHERE user_id = ? 
             ORDER BY upload_time DESC
@@ -1047,17 +1096,28 @@ def get_user_cases():
             # Add enhancement details
             enhancement_type = 'GENAI' if 'genai_enhanced' in (file['enhanced_filename'] or '') else 'Normal'
             
+            # Parse enhanced file paths if available
+            enhanced_file_paths = []
+            if file['enhanced_file_paths']:
+                try:
+                    enhanced_file_paths = json.loads(file['enhanced_file_paths'])
+                except:
+                    enhanced_file_paths = []
+            
             cases[case_id]['enhancements'].append({
                 'id': file['id'],
                 'original_filename': file['original_filename'],
                 'enhanced_filename': file['enhanced_filename'],
+                'original_file_path': file['original_file_path'],
+                'enhanced_file_paths': enhanced_file_paths,
+                'report_file_path': file['report_file_path'],
                 'upload_time': file['upload_time'],
                 'enhancement_time': file['enhancement_time'],
                 'file_size': file['file_size'],
                 'status': file['status'],
                 'error_message': file['error_message'],
                 'enhancement_type': enhancement_type,
-                'can_download_report': file['status'] == 'enhanced' and file['enhanced_filename'] is not None
+                'can_download_report': file['status'] == 'enhanced' and file['report_file_path'] is not None
             })
         
         # Convert to list and sort by last upload time
@@ -1072,6 +1132,112 @@ def get_user_cases():
     except Exception as e:
         print(f"Error fetching user cases: {str(e)}")
         return jsonify({'error': 'Failed to fetch case history'}), 500
+
+@app.route('/api/download-case-report', methods=['POST'])
+def download_case_report():
+    """Download report for a specific case enhancement"""
+    if 'user_id' not in session:
+        return jsonify({'error': 'Unauthorized. Please log in.'}), 401
+    
+    try:
+        data = request.get_json()
+        file_id = data.get('file_id')
+        
+        if not file_id:
+            return jsonify({'error': 'Missing file ID'}), 400
+        
+        conn = get_db()
+        
+        # Get file details for the specific user
+        file_record = conn.execute('''
+            SELECT original_filename, enhanced_filename, original_file_path, enhanced_file_paths, 
+                   upload_time, enhancement_time, case_id, status, report_file_path
+            FROM user_files 
+            WHERE id = ? AND user_id = ?
+        ''', (file_id, session['user_id'])).fetchone()
+        
+        conn.close()
+        
+        if not file_record:
+            return jsonify({'error': 'File not found'}), 404
+        
+        if file_record['status'] != 'enhanced':
+            return jsonify({'error': 'File not enhanced yet'}), 400
+        
+        # Parse enhanced file paths
+        enhanced_file_paths = []
+        if file_record['enhanced_file_paths']:
+            try:
+                enhanced_file_paths = json.loads(file_record['enhanced_file_paths'])
+            except:
+                return jsonify({'error': 'Invalid file paths data'}), 500
+        
+        if not file_record['original_file_path'] or not enhanced_file_paths:
+            return jsonify({'error': 'Missing file paths for report generation'}), 400
+        
+        # Check if files exist
+        missing = []
+        if not os.path.exists(file_record['original_file_path']):
+            missing.append(file_record['original_file_path'])
+        for path in enhanced_file_paths:
+            if not os.path.exists(path):
+                missing.append(path)
+        
+        if missing:
+            return jsonify({'error': f'Missing image files: {missing}'}), 400
+        
+        # Prepare request info
+        request_info = {
+            'timestamp': file_record['enhancement_time'] or file_record['upload_time'],
+            'taskId': str(file_id),
+            'userEmail': session.get('username', 'N/A'),
+            'caseId': file_record['case_id'] or 'No Case ID'
+        }
+        
+        # Generate PDF
+        pdf_data = create_pdf(file_record['original_file_path'], enhanced_file_paths, request_info)
+        buffer = BytesIO(pdf_data)
+        
+        # Create filename
+        case_id = file_record['case_id'] or 'no_case'
+        enhancement_type = 'GENAI' if 'genai_enhanced' in (file_record['enhanced_filename'] or '') else 'Normal'
+        filename = f"case_{case_id}_{enhancement_type}_{file_record['original_filename']}"
+        
+        # Return PDF as response
+        return send_file(
+            buffer,
+            as_attachment=True,
+            download_name=f"enhancement_report_{filename}.pdf",
+            mimetype='application/pdf'
+        )
+        
+    except Exception as e:
+        print(f"Error downloading case report: {str(e)}")
+        import traceback
+        traceback.print_exc()
+        return jsonify({'error': f'Error generating report: {str(e)}'}), 500
+
+@app.route('/api/download-report/<int:file_id>')
+def download_report_file(file_id):
+    if 'user_id' not in session:
+        return jsonify({'error': 'Unauthorized. Please log in.'}), 401
+    conn = get_db()
+    file_record = conn.execute('SELECT report_file_path, original_filename, case_id, enhanced_filename FROM user_files WHERE id = ? AND user_id = ?', (file_id, session['user_id'])).fetchone()
+    conn.close()
+    if not file_record or not file_record['report_file_path']:
+        return jsonify({'error': 'Report not found'}), 404
+    if not os.path.exists(file_record['report_file_path']):
+        return jsonify({'error': 'Report file missing on server'}), 404
+    # Compose a nice filename
+    case_id = file_record['case_id'] or 'no_case'
+    enhancement_type = 'GENAI' if 'genai_enhanced' in (file_record['enhanced_filename'] or '') else 'Normal'
+    filename = f"case_{case_id}_{enhancement_type}_{file_record['original_filename']}.pdf"
+    return send_file(
+        file_record['report_file_path'],
+        as_attachment=True,
+        download_name=filename,
+        mimetype='application/pdf'
+    )
 
 if __name__ == '__main__':
     print("🎭 Starting Super Resolution Web Application in DEMO MODE...")

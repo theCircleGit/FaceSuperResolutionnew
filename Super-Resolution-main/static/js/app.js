@@ -629,12 +629,12 @@ class SuperResolutionApp {
                                                 <td><small>${enhancement.enhancement_time || '-'}</small></td>
                                                 <td>
                                                     ${enhancement.can_download_report ? 
-                                                        `<button class="btn btn-sm btn-outline-primary" onclick="app.downloadCaseReport('${caseId}', '${enhancement.enhancement_type}', '${enhancement.original_filename}')">
+                                                        `<a class="btn btn-sm btn-outline-primary" href="/api/download-report/${enhancement.id}" target="_blank" download>
                                                             <i class="fas fa-file-pdf"></i> Download Report
-                                                        </button>` :
-                                                        enhancement.status === 'error' ?
-                                                        `<small class="text-danger">${enhancement.error_message}</small>` :
-                                                        '<small class="text-muted">Processing...</small>'
+                                                        </a>` :
+                                                        enhancement.status === 'uploaded' ?
+                                                        '<small class="text-muted">Processing...</small>' :
+                                                        '<small class="text-muted">Report Not Available</small>'
                                                     }
                                                 </td>
                                             </tr>
@@ -678,7 +678,7 @@ class SuperResolutionApp {
         return `${(bytes / 1048576).toFixed(1)} MB`;
     }
 
-    async downloadCaseReport(caseId, enhancementType, originalFilename) {
+    async downloadCaseReport(caseId, enhancementType, originalFilename, fileId) {
         try {
             // Show loading state
             const btn = event.target.closest('button');
@@ -686,22 +686,16 @@ class SuperResolutionApp {
             btn.innerHTML = '<i class="fas fa-spinner fa-spin"></i> Generating...';
             btn.disabled = true;
 
-            // For now, we'll generate a simple report
-            // In a real implementation, you'd need to store the file paths in the database
-            // and retrieve them here for the specific enhancement
-            
-            const reportData = {
-                original_image_path: `uploads/original_${originalFilename}`,
-                processed_images_paths: [`uploads/${enhancementType.toLowerCase()}_enhanced_${originalFilename}`],
-                filename: `${caseId}_${enhancementType}_${originalFilename}`
-            };
+            if (!fileId) {
+                throw new Error('File ID not found');
+            }
 
-            const response = await fetch('/api/generate-report', {
+            const response = await fetch('/api/download-case-report', {
                 method: 'POST',
                 headers: {
                     'Content-Type': 'application/json',
                 },
-                body: JSON.stringify(reportData)
+                body: JSON.stringify({ file_id: fileId })
             });
 
             if (response.ok) {
