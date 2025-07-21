@@ -258,6 +258,12 @@ class SuperResolutionApp {
                 this.displayGenaiResult(data.enhanced_images, data.similarity_scores, data.recommended_idx);
                 this.originalImagePath = data.original_image_path;
                 this.enhancedImagePaths = data.enhanced_image_paths;
+                
+                // Add video display if available
+                if (data.video_generated && data.video_url) {
+                    this.displayVideoSection(data.video_url);
+                }
+                
                 this.imageInput.value = '';
                 this.currentFile = null;
                 this.resetUploadArea();
@@ -349,6 +355,45 @@ class SuperResolutionApp {
         } else {
             this.showError('Failed to generate GENAI enhanced images');
         }
+    }
+
+    displayVideoSection(videoUrl) {
+        // Remove existing video section if any
+        const existingVideo = document.getElementById('genai-video-section');
+        if (existingVideo) {
+            existingVideo.remove();
+        }
+
+        // Create video section
+        const videoSection = document.createElement('div');
+        videoSection.id = 'genai-video-section';
+        videoSection.className = 'mt-4 p-3 border rounded bg-light';
+
+        videoSection.innerHTML = `
+            <h5 class="mb-3"><i class="fas fa-video text-primary"></i> Generated AI Video</h5>
+            <div class="row">
+                <div class="col-md-8">
+                    <video controls class="w-100 rounded" style="max-height: 400px;">
+                        <source src="${videoUrl}" type="video/mp4">
+                        Your browser does not support the video tag.
+                    </video>
+                </div>
+                <div class="col-md-4">
+                    <div class="card">
+                        <div class="card-body">
+                            <h6 class="card-title">Video Details</h6>
+                            <p class="small text-muted">AI-generated head movement sequence</p>
+                            <a href="${videoUrl}" download="genai_video.mp4" class="btn btn-outline-primary btn-sm">
+                                <i class="fas fa-download"></i> Download Video
+                            </a>
+                        </div>
+                    </div>
+                </div>
+            </div>
+        `;
+
+        // Insert after results card
+        this.resultsCard.parentNode.insertBefore(videoSection, this.resultsCard.nextSibling);
     }
 
     downloadEnhanced() {

@@ -52,6 +52,14 @@ app.config['DATABASE'] = 'users_demo.db'
 # Create upload folder if it doesn't exist
 os.makedirs(app.config['UPLOAD_FOLDER'], exist_ok=True)
 
+@app.route('/uploads/<filename>')
+def uploaded_file(filename):
+    """Serve files from the uploads directory"""
+    try:
+        return send_file(os.path.join(app.config['UPLOAD_FOLDER'], filename))
+    except FileNotFoundError:
+        return "File not found", 404
+
 def get_db():
     conn = sqlite3.connect(app.config['DATABASE'])
     conn.row_factory = sqlite3.Row
@@ -838,23 +846,36 @@ def genai_enhance_image():
                     os.remove(temp_path)
                 return jsonify({'error': error_msg}), 400
             
-            # Extract images and metadata
-            enhanced_images = [image_to_base64(img) for img in result_data['images']]
-            similarity_scores = result_data['similarity_scores'] 
-            quality_scores = result_data['quality_scores']
-            combined_scores = result_data['combined_scores']
-            recommended_idx = result_data['recommended_idx']
+            # Extract the enhanced image (best frame from video)
+            enhanced_image = result_data['images'][0]  # Single best frame
             
+            # Convert to base64 for display (create 4 copies to match frontend expectation)
+            enhanced_image_b64 = image_to_base64(enhanced_image)
+            enhanced_images = [enhanced_image_b64] * 4  # Show same image in all 4 slots
+            
+            # Get similarity and quality scores
+            similarity_scores = result_data.get('similarity_scores', [1.0])
+            quality_scores = result_data.get('quality_scores', [1.0])
+            combined_scores = result_data.get('combined_scores', [1.0])
+            recommended_idx = result_data.get('recommended_idx', 0)
+            
+            # Save original image
             saved_original_path = os.path.join(app.config['UPLOAD_FOLDER'], f"original_{filename}")
             shutil.copy(temp_path, saved_original_path)
             
+            # Save the enhanced image (best frame)
             enhanced_image_paths = []
-            for idx, img in enumerate(result_data['images']):
-                enhanced_path = os.path.join(app.config['UPLOAD_FOLDER'], f"genai_enhanced_{idx}_{filename}")
-                img.save(enhanced_path)
-                enhanced_image_paths.append(enhanced_path)
+            enhanced_path = os.path.join(app.config['UPLOAD_FOLDER'], f"genai_enhanced_{filename}")
+            enhanced_image.save(enhanced_path)
+            enhanced_image_paths.append(enhanced_path)
+            
+            # Get video information
+            video_path = result_data.get('video_path', '')
+            video_generated = result_data.get('face_analysis', {}).get('video_generated', False)
+            processing_info = result_data.get('processing_info', {})
             
             enhanced_filename = f"genai_enhanced_{filename}"
+            
             # Generate and save report PDF
             report_dir = os.path.join(app.config['UPLOAD_FOLDER'], 'reports')
             os.makedirs(report_dir, exist_ok=True)
@@ -872,7 +893,8 @@ def genai_enhance_image():
             if os.path.exists(temp_path):
                 os.remove(temp_path)
             
-            return jsonify({
+            # Return response with video information
+            response_data = {
                 'success': True,
                 'enhanced_images': enhanced_images,
                 'similarity_scores': similarity_scores,
@@ -881,8 +903,21 @@ def genai_enhance_image():
                 'recommended_idx': recommended_idx,
                 'message': 'GENAI enhancement successful!',
                 'original_image_path': saved_original_path,
-                'enhanced_image_paths': enhanced_image_paths
-            })
+                'enhanced_image_paths': enhanced_image_paths,
+                'video_generated': video_generated,
+                'processing_info': processing_info
+            }
+            
+            # Add video path if video was generated and file exists
+            if video_generated and video_path != "static_image" and os.path.exists(video_path):
+                # Copy video to uploads folder for web access
+                video_filename = f"genai_video_{filename.rsplit('.', 1)[0]}.mp4"
+                web_video_path = os.path.join(app.config['UPLOAD_FOLDER'], video_filename)
+                shutil.copy2(video_path, web_video_path)
+                response_data['video_path'] = web_video_path
+                response_data['video_url'] = f"/uploads/{video_filename}"
+            
+            return jsonify(response_data)
             
         except Exception as e:
             # Detailed error handling for enhancement process
