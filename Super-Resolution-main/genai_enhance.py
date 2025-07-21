@@ -344,71 +344,184 @@ def tensor2pil(image):
     return Image.fromarray(np.clip(255. * image.cpu().numpy().squeeze(), 0, 255).astype(np.uint8))
 
 def save_as_mp4(images, filename_prefix, fps, output_dir="ai_output"):
-    """Save images as MP4 video with browser compatibility"""
+    """Save images as MP4 video with proper browser compatibility (video only, no audio)"""
     os.makedirs(output_dir, exist_ok=True)
     output_path = f"{output_dir}/{filename_prefix}.mp4"
     
     try:
+        # Process frames
         frames = []
         for img in images:
             if torch.is_tensor(img):
-                frame = (img.cpu().numpy() * 255).astype(np.uint8)
+                # Convert tensor to numpy
+                if img.is_cuda:
+                    img = img.cpu()
+                frame = (img.numpy() * 255).astype(np.uint8)
             else:
                 frame = (img * 255).astype(np.uint8)
-            frames.append(frame)
+            
+            # Ensure frame is in correct format (H, W, C)
+            if len(frame.shape) == 4:  # Batch dimension
+                frame = frame[0]
+            if len(frame.shape) == 3 and frame.shape[2] == 3:  # RGB
+                frames.append(frame)
+            else:
+                print(f"⚠️ Skipping frame with shape {frame.shape}")
         
         if not frames:
-            print("❌ No frames to save")
+            print("❌ No valid frames to save")
             return None
         
-        print(f"💾 Saving {len(frames)} frames as MP4...")
+        print(f"💾 Saving {len(frames)} frames as browser-compatible MP4 (video only)...")
         
         # Get frame dimensions
         height, width = frames[0].shape[:2]
         
-        # Try OpenCV with H.264 codec for web compatibility
+        # Method 1: Use imageio with very specific browser-compatible settings
         try:
-            # Use H.264 codec which is widely supported by browsers
-            fourcc = cv2.VideoWriter_fourcc(*'avc1')  # H.264
-            out = cv2.VideoWriter(output_path, fourcc, fps, (width, height), True)
+            import imageio
             
-            if not out.isOpened():
-                print("⚠️ H.264 codec failed, trying MPEG-4...")
-                fourcc = cv2.VideoWriter_fourcc(*'mp4v')  # MPEG-4
+            # These settings create a proper MP4 with video track only
+            writer = imageio.get_writer(
+                output_path, 
+                fps=fps,
+                codec='libx264',           # H.264 codec
+                quality=8,                 # Good quality
+                pixelformat='yuv420p',     # Essential for browser compatibility
+                macro_block_size=None,     # Let imageio decide
+                ffmpeg_params=[
+                    '-pix_fmt', 'yuv420p',     # Force correct pixel format
+                    '-profile:v', 'baseline',   # Baseline profile for max compatibility
+                    '-level', '3.0',           # H.264 level
+                    '-movflags', '+faststart', # Enable web streaming
+                    '-an'                      # No audio track
+                ]
+            )
+            
+            for frame in frames:
+                writer.append_data(frame)
+            writer.close()
+            
+            print(f"✅ MP4 saved with imageio: {output_path}")
+            
+            # Verify the video file
+            if verify_mp4_compatibility(output_path):
+                return output_path
+            else:
+                print("⚠️ imageio video verification failed, trying OpenCV...")
+                
+        except Exception as e:
+            print(f"⚠️ imageio method failed: {e}")
+        
+        # Method 2: Use OpenCV with careful codec selection
+        try:
+            import cv2
+            
+            # Try different fourcc codes in order of browser compatibility
+            fourcc_options = [
+                ('avc1', cv2.VideoWriter_fourcc(*'avc1')),  # H.264 (best for browsers)
+                ('mp4v', cv2.VideoWriter_fourcc(*'mp4v')),  # MPEG-4 (fallback)
+                ('XVID', cv2.VideoWriter_fourcc(*'XVID')),  # Xvid (fallback)
+            ]
+            
+            for fourcc_name, fourcc in fourcc_options:
+                print(f"🔄 Trying {fourcc_name} codec...")
                 out = cv2.VideoWriter(output_path, fourcc, fps, (width, height), True)
-            
-            if out.isOpened():
-                for frame in frames:
-                    if len(frame.shape) == 3 and frame.shape[2] == 3:
+                
+                if out.isOpened():
+                    print(f"✅ {fourcc_name} codec opened successfully")
+                    
+                    for frame in frames:
                         # Convert RGB to BGR for OpenCV
                         frame_bgr = cv2.cvtColor(frame, cv2.COLOR_RGB2BGR)
                         out.write(frame_bgr)
-                
-                out.release()
-                print(f"✅ MP4 saved with OpenCV: {output_path}")
-                return output_path
-            else:
-                print("❌ OpenCV VideoWriter failed to open")
-                
+                    
+                    out.release()
+                    
+                    # Verify the created video
+                    if verify_mp4_compatibility(output_path):
+                        print(f"✅ MP4 saved with OpenCV ({fourcc_name}): {output_path}")
+                        return output_path
+                    else:
+                        print(f"⚠️ {fourcc_name} codec created invalid video, trying next...")
+                        continue
+                else:
+                    print(f"❌ {fourcc_name} codec failed to open")
+                    
         except Exception as e:
-            print(f"❌ OpenCV failed: {e}")
+            print(f"❌ OpenCV method failed: {e}")
         
-        # Fallback: Try imageio with basic settings
+        # Method 3: Create individual PNG frames and let the frontend handle it
+        print("🔄 Fallback: Creating frame sequence...")
         try:
-            with imageio.get_writer(output_path, fps=fps, codec='libx264') as writer:
-                for frame in frames:
-                    writer.append_data(frame)
-            print(f"✅ MP4 saved with imageio: {output_path}")
-            return output_path
+            frames_dir = f"{output_dir}/frames_{filename_prefix}"
+            os.makedirs(frames_dir, exist_ok=True)
+            
+            frame_paths = []
+            for i, frame in enumerate(frames):
+                frame_path = f"{frames_dir}/frame_{i:04d}.png"
+                Image.fromarray(frame).save(frame_path)
+                frame_paths.append(frame_path)
+            
+            # Create a simple HTML5-compatible video using a different approach
+            # Save as animated GIF as ultimate fallback (browsers can always display this)
+            gif_path = output_path.replace('.mp4', '.gif')
+            
+            pil_frames = [Image.fromarray(frame) for frame in frames]
+            pil_frames[0].save(
+                gif_path,
+                save_all=True,
+                append_images=pil_frames[1:],
+                duration=int(1000/fps),  # Duration in milliseconds
+                loop=0,
+                optimize=True
+            )
+            
+            print(f"✅ Fallback GIF created: {gif_path}")
+            return gif_path
+            
         except Exception as e:
-            print(f"❌ imageio failed: {e}")
+            print(f"❌ Frame sequence fallback failed: {e}")
         
-        print("❌ All video saving methods failed")
+        print("❌ All video encoding methods failed")
         return None
         
     except Exception as e:
-        print(f"❌ Video saving error: {e}")
+        print(f"❌ MP4 encoding error: {e}")
+        import traceback
+        traceback.print_exc()
         return None
+
+def verify_mp4_compatibility(video_path):
+    """Verify that the MP4 file is browser-compatible"""
+    try:
+        import cv2
+        cap = cv2.VideoCapture(video_path)
+        
+        if not cap.isOpened():
+            print(f"❌ Cannot open video: {video_path}")
+            return False
+        
+        # Get video properties
+        frame_count = int(cap.get(cv2.CAP_PROP_FRAME_COUNT))
+        fps = cap.get(cv2.CAP_PROP_FPS)
+        width = int(cap.get(cv2.CAP_PROP_FRAME_WIDTH))
+        height = int(cap.get(cv2.CAP_PROP_FRAME_HEIGHT))
+        
+        # Try to read first frame to ensure video is actually readable
+        ret, frame = cap.read()
+        cap.release()
+        
+        if frame_count > 0 and fps > 0 and width > 0 and height > 0 and ret and frame is not None:
+            print(f"✅ Video verified: {frame_count} frames, {fps:.1f} FPS, {width}x{height}")
+            return True
+        else:
+            print(f"❌ Invalid video properties: frames={frame_count}, fps={fps}, size={width}x{height}, readable={ret}")
+            return False
+            
+    except Exception as e:
+        print(f"❌ Video verification failed: {e}")
+        return False
 
 def save_as_image(image, filename_prefix, output_dir="ai_output"):
     """Save single frame as PNG image"""

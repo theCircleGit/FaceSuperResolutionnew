@@ -310,45 +310,42 @@ class SuperResolutionApp {
     }
 
     displayGenaiResult(enhancedImages, similarityScores, recommendedIdx) {
-        // Map GenAI images to the most relevant slots and update labels
-        const imageIds = ['enhancedImage0', 'enhancedImage1', 'enhancedImage2', 'enhancedImage3'];
-        const genaiLabels = [
-            "Grid Search (Low-Res)",
-            "High-Res SD",
-            "Upscaled (4x)",
-            "IP-Adapter Final"
-        ];
-        if (enhancedImages && enhancedImages.length >= 4) {
+        // For GenAI, we only display one enhanced image (the best frame)
+        const imageIds = ['enhancedImage0', 'enhancedImage1', 'enhancedImage2', 'enhancedImage3', 'enhancedImage4'];
+        
+        if (enhancedImages && enhancedImages.length >= 1) {
             this.enhancedImageData = enhancedImages;
-            for (let i = 0; i < 4; i++) {
-                const imgElement = document.getElementById(imageIds[i]);
-                const labelElement = imgElement?.parentElement.querySelector('h6');
+            
+            // Show only the first image slot with the enhanced image
+            const firstImg = document.getElementById('enhancedImage0');
+            const firstLabel = firstImg?.parentElement.querySelector('h6');
+            
+            if (firstImg && enhancedImages[0]) {
+                firstImg.src = enhancedImages[0];
+                firstImg.onclick = () => this.openImageModal(enhancedImages[0], "Best Frame (Enhanced)");
+                if (firstLabel) firstLabel.textContent = "Best Frame (Enhanced)";
                 
-                if (imgElement && enhancedImages[i]) {
-                    imgElement.src = enhancedImages[i];
-                    imgElement.onclick = () => this.openImageModal(enhancedImages[i], genaiLabels[i]);
-                    if (labelElement) labelElement.textContent = genaiLabels[i];
-                    
-                    // Handle recommended badge
-                    let badgeContainer = imgElement?.parentElement.querySelector('.mt-2');
-                    if (!badgeContainer) {
-                        badgeContainer = document.createElement('div');
-                        badgeContainer.className = 'mt-2';
-                        imgElement.parentElement.appendChild(badgeContainer);
-                    }
-                    
-                    // Add recommended badge to the most similar image
-                    if (i === recommendedIdx) {
-                        badgeContainer.innerHTML = '<span class="badge bg-primary">Recommended</span>';
-                        console.log(`✅ Most similar image: ${genaiLabels[i]} (similarity: ${similarityScores?.[i]?.toFixed(4)})`);
-                    } else {
-                        badgeContainer.innerHTML = '';
-                    }
+                // Show the first image container
+                firstImg.parentElement.style.display = 'block';
+                
+                // Add badge
+                let badgeContainer = firstImg?.parentElement.querySelector('.mt-2');
+                if (!badgeContainer) {
+                    badgeContainer = document.createElement('div');
+                    badgeContainer.className = 'mt-2';
+                    firstImg.parentElement.appendChild(badgeContainer);
+                }
+                badgeContainer.innerHTML = '<span class="badge bg-primary">AI Enhanced</span>';
+            }
+            
+            // Hide all other image slots for GenAI results
+            for (let i = 1; i < imageIds.length; i++) {
+                const imgElement = document.getElementById(imageIds[i]);
+                if (imgElement && imgElement.parentElement) {
+                    imgElement.parentElement.style.display = 'none';
                 }
             }
-            // Hide the 5th slot if present
-            const fifth = document.getElementById('enhancedImage4');
-            if (fifth) fifth.parentElement.style.display = 'none';
+            
             this.resultsCard.classList.remove('d-none');
             this.enhanceCard.classList.add('d-none');
             this.scrollToResults();
@@ -364,36 +361,123 @@ class SuperResolutionApp {
             existingVideo.remove();
         }
 
+        // Determine file type from URL
+        const isGif = videoUrl.toLowerCase().endsWith('.gif');
+        const fileType = isGif ? 'GIF Animation' : 'MP4 Video';
+
         // Create video section
         const videoSection = document.createElement('div');
         videoSection.id = 'genai-video-section';
         videoSection.className = 'mt-4 p-3 border rounded bg-light';
 
+        let mediaHTML;
+        if (isGif) {
+            // For GIF files, use img tag
+            mediaHTML = `
+                <img 
+                    id="genai-video-player"
+                    src="${videoUrl}" 
+                    class="w-100 rounded" 
+                    style="max-height: 400px; background-color: #000;"
+                    onload="console.log('🎬 GIF loaded successfully')"
+                    onerror="console.error('🎬 GIF error'); app.handleVideoError(this)">
+                <div class="mt-2">
+                    <small class="text-muted">GIF URL: <code>${videoUrl}</code></small>
+                </div>
+            `;
+        } else {
+            // For MP4 files, use video tag
+            mediaHTML = `
+                <video 
+                    id="genai-video-player"
+                    controls 
+                    class="w-100 rounded" 
+                    style="max-height: 400px; background-color: #000;"
+                    preload="metadata"
+                    onloadstart="console.log('🎬 Video load started')"
+                    onloadeddata="console.log('🎬 Video data loaded')"
+                    oncanplay="console.log('🎬 Video can play')"
+                    onerror="console.error('🎬 Video error:', this.error); app.handleVideoError(this)">
+                    <source src="${videoUrl}" type="video/mp4">
+                    <p class="text-muted p-3">Your browser does not support the video tag.</p>
+                </video>
+                <div class="mt-2">
+                    <small class="text-muted">Video URL: <code>${videoUrl}</code></small>
+                </div>
+            `;
+        }
+
         videoSection.innerHTML = `
-            <h5 class="mb-3"><i class="fas fa-video text-primary"></i> Generated AI Video</h5>
+            <h5 class="mb-3"><i class="fas fa-video text-primary"></i> Generated AI ${fileType}</h5>
             <div class="row">
                 <div class="col-md-8">
-                    <video controls class="w-100 rounded" style="max-height: 400px;">
-                        <source src="${videoUrl}" type="video/mp4">
-                        Your browser does not support the video tag.
-                    </video>
+                    ${mediaHTML}
                 </div>
                 <div class="col-md-4">
                     <div class="card">
                         <div class="card-body">
-                            <h6 class="card-title">Video Details</h6>
+                            <h6 class="card-title">${fileType} Details</h6>
                             <p class="small text-muted">AI-generated head movement sequence</p>
-                            <a href="${videoUrl}" download="genai_video.mp4" class="btn btn-outline-primary btn-sm">
-                                <i class="fas fa-download"></i> Download Video
-                            </a>
+                            <div class="d-grid gap-2">
+                                <a href="${videoUrl}" download="genai_video${isGif ? '.gif' : '.mp4'}" class="btn btn-outline-primary btn-sm">
+                                    <i class="fas fa-download"></i> Download ${fileType}
+                                </a>
+                                <button onclick="app.testVideoUrl('${videoUrl}')" class="btn btn-outline-info btn-sm">
+                                    <i class="fas fa-play"></i> Test ${fileType} URL
+                                </button>
+                                <a href="${videoUrl}" target="_blank" class="btn btn-outline-secondary btn-sm">
+                                    <i class="fas fa-external-link-alt"></i> Open in New Tab
+                                </a>
+                            </div>
                         </div>
                     </div>
                 </div>
+            </div>
+            <div id="video-error-info" class="alert alert-warning mt-3" style="display: none;">
+                <i class="fas fa-exclamation-triangle"></i>
+                <strong>${fileType} Playback Issue:</strong> The ${fileType.toLowerCase()} file may not be properly encoded for web browsers.
+                You can still <a href="${videoUrl}" download>download the ${fileType.toLowerCase()}</a> to view it locally.
             </div>
         `;
 
         // Insert after results card
         this.resultsCard.parentNode.insertBefore(videoSection, this.resultsCard.nextSibling);
+        
+        console.log(`🎬 ${fileType} section added with URL:`, videoUrl);
+    }
+
+    handleVideoError(videoElement) {
+        console.error('🎬 Video playback error:', videoElement.error);
+        const errorInfo = document.getElementById('video-error-info');
+        if (errorInfo) {
+            errorInfo.style.display = 'block';
+        }
+        
+        // Show specific error message
+        if (videoElement.error) {
+            console.error('🎬 Error code:', videoElement.error.code);
+            console.error('🎬 Error message:', videoElement.error.message);
+        }
+    }
+
+    testVideoUrl(videoUrl) {
+        console.log('🎬 Testing video URL:', videoUrl);
+        fetch(videoUrl, { method: 'HEAD' })
+            .then(response => {
+                console.log('🎬 Video URL response:', response.status, response.statusText);
+                console.log('🎬 Content-Type:', response.headers.get('Content-Type'));
+                console.log('🎬 Content-Length:', response.headers.get('Content-Length'));
+                
+                if (response.ok) {
+                    this.showNotification('Video URL is accessible!', 'success');
+                } else {
+                    this.showNotification(`Video URL error: ${response.status}`, 'warning');
+                }
+            })
+            .catch(error => {
+                console.error('🎬 Video URL test failed:', error);
+                this.showNotification('Video URL test failed', 'danger');
+            });
     }
 
     downloadEnhanced() {
