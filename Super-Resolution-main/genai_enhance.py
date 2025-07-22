@@ -1189,11 +1189,172 @@ def create_simple_head_turn_video(image_path: str, fps: int = 15, frames: int = 
         print(f"❌ Fallback video generation failed: {e}")
         return None
  
-# ─── MAIN API FUNCTION ─────────────────────────────────────────────────────
+# ─── FLUX ENHANCEMENT FUNCTIONS ───────────────────────────────────────────
+def flux_enhance_image(image_path: str):
+    """
+    Flux-based image enhancement using the user's Colab workflow
+    Returns enhanced image using Flux model with specific prompt and settings
+    """
+    print("🎨 Starting Flux image enhancement...")
+    
+    # Store original directory
+    original_dir = os.getcwd()
+    comfy_dir = os.path.join(original_dir, "ComfyUI")
+    
+    try:
+        os.chdir(comfy_dir)
+        
+        with torch.inference_mode():
+            # Import nodes (same as ComfyUI setup)
+            from nodes import (
+                DualCLIPLoader, CLIPTextEncode, VAEEncode, VAEDecode, VAELoader,
+                KSamplerAdvanced, ConditioningZeroOut, ImageScale, LoraLoaderModelOnly, 
+                LoadImage, SaveImage
+            )
+            from ComfyUI_GGUF.nodes import UnetLoaderGGUF
+            from comfy_extras.nodes_flux import FluxGuidance, FluxKontextImageScale
+            from comfy_extras.nodes_images import ImageStitch
+            from comfy_extras.nodes_edit_model import ReferenceLatent
+            from comfy_extras.nodes_sd3 import EmptySD3LatentImage
+            
+            # Initialize nodes
+            clip_loader = DualCLIPLoader()
+            unet_loader = UnetLoaderGGUF()
+            vae_loader = VAELoader()
+            vae_encode = VAEEncode()
+            vae_decode = VAEDecode()
+            ksampler = KSamplerAdvanced()
+            load_lora = LoraLoaderModelOnly()
+            load_turbo_lora = LoraLoaderModelOnly()
+            load_image = LoadImage()
+            positive_prompt_encode = CLIPTextEncode()
+            negative_prompt_encode = ConditioningZeroOut()
+            empty_latent_image = EmptySD3LatentImage()
+            flux_guidance = FluxGuidance()
+            flux_kontext_scale = FluxKontextImageScale()
+            image_stitch = ImageStitch()
+            reference_latent = ReferenceLatent()
+            image_scaler = ImageScale()
+            
+            # Model paths
+            flux_model = "flux1-kontext-dev-Q6_K.gguf"
+            flux_vae = "ae.sft"
+            flux_clip_l = "clip_l.safetensors"
+            flux_t5xxl = "t5xxl_fp8_e4m3fn.safetensors"
+            flux_1_turbo = "flux_1_turbo_alpha.safetensors"
+            facezoom_lora = "Facezoom_Kontext_LoRA.safetensors"
+            
+            # Flux enhancement settings
+            positive_prompt = "((same person)), frontal face, directly looking at the camera, ultra-high-definition portrait, sharp facial features, cinematic lighting, professional studio quality, detailed eyes, no pixelation, anti-aliased, same person, same ethnicity, maintain facial recognition, same eye color, same age, gender, face colour, identical face, no blockiness"
+            guidance = 2.0
+            seed = random.randint(0, 2**32 - 1)
+            steps = 20
+            cfg = 1.0
+            sampler_name = "euler"
+            scheduler = "simple"
+            use_turbo_lora = True
+            use_lora = True
+            lora_strength = 1.0
+            
+            print(f"🎲 Using Flux seed: {seed}")
+            
+            # Load text encoder
+            print("🔤 Loading Flux Text Encoder...")
+            clip = clip_loader.load_clip(flux_t5xxl, flux_clip_l, "flux")[0]
+            
+            prompt_encode = positive_prompt_encode.encode(clip, positive_prompt)[0]
+            negative = negative_prompt_encode.zero_out(prompt_encode)[0]
+            
+            del clip
+            torch.cuda.empty_cache()
+            gc.collect()
+            
+            # Load and process image
+            print("🖼️ Loading and processing image for Flux...")
+            image = load_image.load_image(os.path.basename(image_path))[0]
+            
+            # Create stitched image (side-by-side for editing)
+            stitched_image = image_stitch.stitch(
+                image, "right", True, 0, "white", None
+            )[0]
+            
+            scaled_image = flux_kontext_scale.scale(stitched_image)[0]
+            
+            # Load VAE and encode
+            print("🎥 Loading Flux VAE...")
+            vae = vae_loader.load_vae(flux_vae)[0]
+            latent = vae_encode.encode(vae, scaled_image)[0]
+            
+            conditioning = reference_latent.append(prompt_encode, latent)[0]
+            positive = flux_guidance.append(conditioning, guidance)[0]
+            
+            # Load UNet model
+            print("🤖 Loading Flux UNet Model...")
+            model = unet_loader.load_unet(flux_model)[0]
+            
+            used_steps = steps
+            
+            if use_turbo_lora:
+                print("⚡ Loading Turbo LoRA...")
+                model = load_turbo_lora.load_lora_model_only(model, flux_1_turbo, 1.0)[0]
+                used_steps = 8
+            
+            if use_lora:
+                print("🎭 Loading Facezoom LoRA...")
+                model = load_lora.load_lora_model_only(model, facezoom_lora, lora_strength)[0]
+            
+            # Generate enhanced image
+            print("🎨 Generating Flux enhancement...")
+            image_out_latent = ksampler.sample(
+                model=model,
+                add_noise="enable",
+                noise_seed=seed,
+                steps=used_steps,
+                cfg=cfg,
+                sampler_name=sampler_name,
+                scheduler=scheduler,
+                positive=positive,
+                negative=negative,
+                latent_image=latent,
+                start_at_step=0,
+                end_at_step=1000,
+                return_with_leftover_noise="disable"
+            )[0]
+            
+            del model
+            torch.cuda.empty_cache()
+            gc.collect()
+            
+            # Decode latents
+            print("🎨 Decoding Flux latents...")
+            decoded = vae_decode.decode(vae, image_out_latent)[0]
+            
+            del vae
+            torch.cuda.empty_cache()
+            gc.collect()
+            
+            # Change back to original directory
+            os.chdir(original_dir)
+            
+            # Save Flux enhanced image
+            timestamp = datetime.datetime.now().strftime("%Y%m%d_%H%M%S")
+            flux_output_path = save_as_image(decoded[0], f"flux_enhanced_{timestamp}")
+            
+            print(f"✅ Flux enhancement completed: {flux_output_path}")
+            return flux_output_path
+            
+    except Exception as e:
+        print(f"❌ Flux enhancement failed: {e}")
+        os.chdir(original_dir)
+        return None
+    finally:
+        clear_memory()
+
+# ─── MAIN API FUNCTION (UPDATED) ──────────────────────────────────────────
 def genai_enhance_image_api_method(image_path):
     """
-    Main API function for comprehensive GenAI enhancement with ComfyUI video generation
-    Maintains compatibility with existing Flask app interface
+    Main API function for comprehensive GenAI enhancement with both ComfyUI video and Flux enhancement
+    Returns two enhanced images: best frame from video + Flux enhancement
     """
     # Prevent concurrent requests
     if not _processing_lock.acquire(blocking=False):
@@ -1216,7 +1377,7 @@ def genai_enhance_image_api_method(image_path):
         comfy_input_path = os.path.join(comfy_base, "input", os.path.basename(image_path))
         shutil.copy2(image_path, comfy_input_path)
         
-        # Generate video using ComfyUI
+        # Enhancement 1: Generate video using ComfyUI and extract best frame
         print("🎬 Generating AI video...")
         video_path = generate_video_comfyui(
             image_path=os.path.basename(image_path),  # Just the filename - ComfyUI will look in input/
@@ -1239,18 +1400,8 @@ def genai_enhance_image_api_method(image_path):
             output_format="mp4"
         )
         
-        if video_path is None:
-            print("⚠️ ComfyUI video generation failed, creating simple head-turn video...")
-            video_path = create_simple_head_turn_video(comfy_input_path, fps=15, frames=60)
-        
-        if video_path is None:
-            print("❌ All video generation methods failed, using static image")
-            # Just use the input image as fallback
-            img = Image.open(image_path).convert("RGB")
-            best_frame_pil = img
-            video_path = "static_image"
-        else:
-            # Extract best front-facing frame from video
+        # Extract best frame from video
+        if video_path and video_path != "static_image":
             print("🔍 Extracting best front-facing frame...")
             try:
                 best_frame = find_best_front_frame(video_path)
@@ -1265,30 +1416,47 @@ def genai_enhance_image_api_method(image_path):
                 print(f"⚠️ Frame extraction failed: {e}")
                 # Fallback to original image
                 best_frame_pil = Image.open(image_path).convert("RGB")
+                video_path = "static_image"
+        else:
+            print("⚠️ ComfyUI video generation failed, using original image")
+            best_frame_pil = Image.open(image_path).convert("RGB")
+            video_path = "static_image"
+        
+        # Enhancement 2: Flux-based enhancement
+        print("🎨 Starting Flux enhancement...")
+        flux_enhanced_path = flux_enhance_image(comfy_input_path)
+        
+        if flux_enhanced_path:
+            flux_enhanced_pil = Image.open(flux_enhanced_path).convert("RGB")
+        else:
+            print("⚠️ Flux enhancement failed, using original image")
+            flux_enhanced_pil = Image.open(image_path).convert("RGB")
         
         end_time = time.time()
         processing_time = end_time - start_time
         m, s = divmod(processing_time, 60)
         print(f"✅ GenAI enhancement completed in {int(m)}m {s:.1f}s")
         
-        # Return results in expected format
+        # Return results with TWO enhanced images
         return {
-            'images': [best_frame_pil],  # Single best frame as enhanced image
-            'similarity_scores': [1.0],
-            'quality_scores': [1.0],
-            'combined_scores': [1.0],
+            'images': [best_frame_pil, flux_enhanced_pil],  # Two enhanced images
+            'similarity_scores': [1.0, 1.0],
+            'quality_scores': [1.0, 1.0],
+            'combined_scores': [1.0, 1.0],
             'recommended_idx': 0,
             'face_analysis': {
                 'video_generated': video_path != "static_image",
                 'best_frame_extracted': video_path != "static_image",
+                'flux_enhanced': flux_enhanced_path is not None,
                 'processing_time': processing_time,
-                'method_used': 'ComfyUI' if 'genai_video' in str(video_path) else 'fallback' if 'fallback' in str(video_path) else 'static'
+                'method_used': 'ComfyUI + Flux'
             },
             'processing_info': {
                 'timestamp': timestamp,
-                'variants_generated': 1,
+                'variants_generated': 2,  # Now generating 2 variants
                 'device_used': DEVICE,
-                'comfyui_used': 'genai_video' in str(video_path)
+                'comfyui_used': video_path != "static_image",
+                'flux_used': flux_enhanced_path is not None
             },
             'video_path': video_path
         }

@@ -310,20 +310,64 @@ class SuperResolutionApp {
     }
 
     displayGenaiResult(enhancedImages, similarityScores, recommendedIdx) {
-        // For GenAI, we only display one enhanced image (the best frame)
+        // For GenAI, we display two enhanced images: ComfyUI best frame + Flux enhancement
         const imageIds = ['enhancedImage0', 'enhancedImage1', 'enhancedImage2', 'enhancedImage3', 'enhancedImage4'];
+        const imageLabels = ['Best Frame (ComfyUI)', 'Flux Enhanced', '', '', ''];
         
-        if (enhancedImages && enhancedImages.length >= 1) {
+        if (enhancedImages && enhancedImages.length >= 2) {
             this.enhancedImageData = enhancedImages;
             
-            // Show only the first image slot with the enhanced image
+            // Show the first two image slots with enhanced images
+            for (let i = 0; i < 2; i++) {
+                const imgElement = document.getElementById(imageIds[i]);
+                const labelElement = imgElement?.parentElement.querySelector('h6');
+                
+                if (imgElement && enhancedImages[i]) {
+                    imgElement.src = enhancedImages[i];
+                    imgElement.onclick = () => this.openImageModal(enhancedImages[i], imageLabels[i]);
+                    if (labelElement) labelElement.textContent = imageLabels[i];
+                    
+                    // Show the image container
+                    imgElement.parentElement.style.display = 'block';
+                    
+                    // Add appropriate badge
+                    let badgeContainer = imgElement?.parentElement.querySelector('.mt-2');
+                    if (!badgeContainer) {
+                        badgeContainer = document.createElement('div');
+                        badgeContainer.className = 'mt-2';
+                        imgElement.parentElement.appendChild(badgeContainer);
+                    }
+                    
+                    if (i === 0) {
+                        badgeContainer.innerHTML = '<span class="badge bg-primary">Video Best Frame</span>';
+                    } else if (i === 1) {
+                        badgeContainer.innerHTML = '<span class="badge bg-info">Flux Enhanced</span>';
+                    }
+                }
+            }
+            
+            // Hide the remaining image slots (slots 3-5)
+            for (let i = 2; i < imageIds.length; i++) {
+                const imgElement = document.getElementById(imageIds[i]);
+                if (imgElement && imgElement.parentElement) {
+                    imgElement.parentElement.style.display = 'none';
+                }
+            }
+            
+            this.resultsCard.classList.remove('d-none');
+            this.enhanceCard.classList.add('d-none');
+            this.scrollToResults();
+        } else if (enhancedImages && enhancedImages.length === 1) {
+            // Fallback: if only one image is available, show it in first slot
+            this.enhancedImageData = enhancedImages;
+            
             const firstImg = document.getElementById('enhancedImage0');
             const firstLabel = firstImg?.parentElement.querySelector('h6');
             
             if (firstImg && enhancedImages[0]) {
                 firstImg.src = enhancedImages[0];
-                firstImg.onclick = () => this.openImageModal(enhancedImages[0], "Best Frame (Enhanced)");
-                if (firstLabel) firstLabel.textContent = "Best Frame (Enhanced)";
+                firstImg.onclick = () => this.openImageModal(enhancedImages[0], "Enhanced Image");
+                if (firstLabel) firstLabel.textContent = "Enhanced Image";
                 
                 // Show the first image container
                 firstImg.parentElement.style.display = 'block';
@@ -338,7 +382,7 @@ class SuperResolutionApp {
                 badgeContainer.innerHTML = '<span class="badge bg-primary">AI Enhanced</span>';
             }
             
-            // Hide all other image slots for GenAI results
+            // Hide all other image slots
             for (let i = 1; i < imageIds.length; i++) {
                 const imgElement = document.getElementById(imageIds[i]);
                 if (imgElement && imgElement.parentElement) {
